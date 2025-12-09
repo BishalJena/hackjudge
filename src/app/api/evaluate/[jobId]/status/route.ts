@@ -2,12 +2,13 @@
  * Evaluation Status API - Poll evaluation progress
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getExecutionStatus, mapExecutionToProgress } from '@/lib/kestra';
 
 interface StatusParams {
     params: Promise<{ jobId: string }>;
 }
 
-// Mock evaluation steps for demo
+// Mock evaluation steps for demo (used when Kestra not available)
 const EVALUATION_STEPS = [
     { id: 'clone', name: 'Clone Repository', duration: 2000 },
     { id: 'metadata', name: 'Extract Metadata', duration: 1500 },
@@ -28,10 +29,36 @@ export async function GET(request: NextRequest, { params }: StatusParams) {
         );
     }
 
-    // In production, fetch real status from database/Kestra
-    // For demo, return mock progress based on time
+    // Check for executionId in query params (for Kestra mode)
+    const executionId = request.nextUrl.searchParams.get('executionId');
 
-    // Simulate progress based on job ID timestamp
+    if (executionId) {
+        // Fetch real status from Kestra
+        const execution = await getExecutionStatus(executionId);
+
+        if (execution) {
+            const progress = mapExecutionToProgress(execution);
+            const projectId = `project-${jobId.split('_')[2] || 'demo'}`;
+
+            return NextResponse.json({
+                success: true,
+                data: {
+                    jobId,
+                    executionId,
+                    projectId,
+                    mode: 'kestra',
+                    status: progress.status,
+                    currentStep: progress.currentStep,
+                    totalSteps: progress.totalSteps,
+                    steps: progress.steps,
+                    progress: (progress.currentStep / progress.totalSteps) * 100,
+                    logs: progress.logs,
+                },
+            });
+        }
+    }
+
+    // Fallback: Mock progress based on job ID timestamp
     const jobTimestamp = parseInt(jobId.split('_')[1] || '0', 10);
     const elapsed = Date.now() - jobTimestamp;
 
@@ -67,6 +94,7 @@ export async function GET(request: NextRequest, { params }: StatusParams) {
         data: {
             jobId,
             projectId,
+            mode: 'mock',
             status: isComplete ? 'complete' : 'running',
             currentStep: Math.min(currentStep, EVALUATION_STEPS.length - 1),
             totalSteps: EVALUATION_STEPS.length,
@@ -82,3 +110,4 @@ export async function GET(request: NextRequest, { params }: StatusParams) {
         },
     });
 }
+

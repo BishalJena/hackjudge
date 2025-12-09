@@ -3,6 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { isValidGitHubUrl, parseGitHubUrl, getRepoInfo } from '@/lib/github';
+import { triggerEvaluation, checkKestraHealth } from '@/lib/kestra';
 
 interface EvaluateRequest {
     repoUrl: string;
@@ -50,17 +51,39 @@ export async function POST(request: NextRequest) {
 
         // Generate job ID
         const jobId = `eval_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const branch = body.branch || repoInfo.defaultBranch;
 
-        // In production, this would:
-        // 1. Store the job in database
-        // 2. Trigger Kestra workflow via API
-        // 3. Return job ID for status polling
+        // Check if Kestra is available
+        const kestraAvailable = await checkKestraHealth();
+        let executionId: string | null = null;
+        let mode: 'kestra' | 'mock' = 'mock';
 
-        // For demo, return success with job ID
+        if (kestraAvailable) {
+            // Trigger Kestra workflow
+            const result = await triggerEvaluation({
+                repoUrl: body.repoUrl,
+                branch,
+                hackathonUrl: body.hackathonUrl,
+                jobId,
+                settings: body.settings,
+            });
+
+            if (result) {
+                executionId = result.executionId;
+                mode = 'kestra';
+                console.log(`Kestra execution started: ${executionId}`);
+            }
+        } else {
+            console.log('Kestra not available, using mock mode');
+        }
+
+        // Return job info
         return NextResponse.json({
             success: true,
             data: {
                 jobId,
+                executionId,
+                mode,
                 projectId: `${parsed.owner}-${parsed.repo}`,
                 status: 'queued',
                 repoInfo: {
@@ -70,7 +93,7 @@ export async function POST(request: NextRequest) {
                     language: repoInfo.language,
                 },
                 settings: {
-                    branch: body.branch || repoInfo.defaultBranch,
+                    branch,
                     buildType: body.settings?.buildType || 'full',
                     timeout: body.settings?.timeout || 5,
                     skipLighthouse: body.settings?.skipLighthouse || false,
@@ -87,3 +110,4 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+
