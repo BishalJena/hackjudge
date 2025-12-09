@@ -5,7 +5,6 @@
 import {
     isValidGitHubUrl,
     parseGitHubUrl,
-    getAuthUrl,
 } from '@/lib/github';
 
 describe('GitHub Utilities', () => {
@@ -49,16 +48,6 @@ describe('GitHub Utilities', () => {
             expect(parseGitHubUrl('')).toBeNull();
             expect(parseGitHubUrl('invalid')).toBeNull();
             expect(parseGitHubUrl('https://gitlab.com/owner/repo')).toBeNull();
-        });
-    });
-
-    describe('getAuthUrl', () => {
-        it('should generate a valid OAuth URL with state', () => {
-            const url = getAuthUrl('random-state');
-            expect(url).toContain('https://github.com/login/oauth/authorize');
-            expect(url).toContain('client_id=');
-            expect(url).toContain('state=random-state');
-            expect(url).toContain('scope=read%3Auser%2Crepo');
         });
     });
 

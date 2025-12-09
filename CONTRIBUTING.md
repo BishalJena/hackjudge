@@ -1,199 +1,162 @@
 # Contributing to HackJudge AI
 
-Thank you for your interest in contributing to HackJudge AI! This document provides guidelines and instructions for contributing.
+First off, thank you for considering contributing to HackJudge AI! 🎉
+
+## Table of Contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Setup](#development-setup)
+- [How to Contribute](#how-to-contribute)
+- [Pull Request Process](#pull-request-process)
+- [Style Guidelines](#style-guidelines)
 
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
+This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18.17+
-- npm 9+
+- Node.js 18+ 
+- npm or yarn
 - Git
+- Docker (for Kestra integration)
 
-### Setup
+### Development Setup
 
-```bash
-# Clone the repository
-git clone https://github.com/your-username/hackjudge.git
-cd hackjudge
+1. **Fork and clone the repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/hackjudge.git
+   cd hackjudge
+   ```
 
-# Install dependencies
-npm install
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-# Copy environment variables
-cp .env.example .env
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env.local
+   # Edit .env.local with your API keys
+   ```
 
-# Start development server
-npm run dev
-```
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
 
-## Development Workflow
+5. **Run tests**
+   ```bash
+   npm test
+   npm test -- --coverage
+   ```
 
-### Branch Naming
+## How to Contribute
 
-Use descriptive branch names:
+### Reporting Bugs
 
-```
-feature/add-lighthouse-integration
-fix/oauth-callback-error
-docs/update-readme
-refactor/simplify-api-routes
-```
+Before creating bug reports, please check existing issues. When creating a bug report, include:
 
-### Commit Messages
+- A clear, descriptive title
+- Steps to reproduce the issue
+- Expected vs actual behavior
+- Screenshots if applicable
+- Environment details (OS, Node version, browser)
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+### Suggesting Features
 
-```
-feat: add Lighthouse performance audit
-fix: resolve GitHub OAuth callback error
-docs: update API documentation
-refactor: simplify evaluate API route
-style: fix terminal card border styling
-test: add unit tests for mock data
-chore: update dependencies
-```
+Feature requests are welcome! Please:
 
-### Pull Request Process
+- Check existing issues first
+- Describe the problem your feature would solve
+- Explain your proposed solution
+- Note any alternatives you've considered
 
-1. **Create a feature branch** from `main`
-2. **Make your changes** following the coding standards
-3. **Test locally** with `npm run dev` and `npm run build`
-4. **Run lint** with `npm run lint` and fix any issues
-5. **Create a PR** using the PR template
-6. **Wait for CodeRabbit review** - address any feedback
-7. **Request human review** once CodeRabbit approves
+### Code Contributions
 
-## Coding Standards
+1. **Find an issue to work on**
+   - Look for `good first issue` or `help wanted` labels
+   - Comment on the issue to claim it
+
+2. **Create a branch**
+   ```bash
+   git checkout -b feat/your-feature-name
+   # or
+   git checkout -b fix/your-bug-fix
+   ```
+
+3. **Make your changes**
+   - Write clean, documented code
+   - Add tests for new functionality
+   - Update documentation as needed
+
+4. **Test your changes**
+   ```bash
+   npm test
+   npm run build
+   npm run lint
+   ```
+
+5. **Commit with conventional commits**
+   ```bash
+   git commit -m "feat: add new evaluation agent"
+   git commit -m "fix: resolve SSE connection timeout"
+   git commit -m "docs: update API documentation"
+   ```
+
+## Pull Request Process
+
+1. **Update documentation** if you're changing functionality
+2. **Add tests** for new features
+3. **Ensure all tests pass** and coverage doesn't decrease
+4. **Fill out the PR template** completely
+5. **Request review** from maintainers
+6. **Address feedback** promptly
+
+### PR Title Format
+
+Use conventional commit format:
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation
+- `test:` Tests
+- `refactor:` Code refactoring
+- `chore:` Maintenance
+
+## Style Guidelines
 
 ### TypeScript
 
-- ✅ Use explicit types (avoid `any`)
-- ✅ Use interfaces for complex objects
-- ✅ Use `const` by default
-- ✅ Handle all error cases
+- Use TypeScript for all new code
+- Define interfaces for all data structures
+- Avoid `any` types
+- Use meaningful variable names
 
-```typescript
-// ✅ Good
-interface User {
-  id: string;
-  name: string;
-}
+### Code Style
 
-const getUser = async (id: string): Promise<User | null> => {
-  try {
-    const response = await fetch(`/api/users/${id}`);
-    return response.json();
-  } catch (error) {
-    console.error('Failed to fetch user:', error);
-    return null;
-  }
-};
+- Use ESLint configuration provided
+- Use Prettier for formatting
+- Keep functions small and focused
+- Add JSDoc comments for public APIs
 
-// ❌ Bad
-const getUser = async (id: any) => {
-  const response = await fetch(`/api/users/${id}`);
-  return response.json();
-};
-```
+### Testing
 
-### React Components
-
-- ✅ Use functional components
-- ✅ Use TypeScript props interfaces
-- ✅ Include accessibility attributes
-- ✅ Follow terminal aesthetic
-
-```tsx
-// ✅ Good
-interface ButtonProps {
-  onClick: () => void;
-  children: React.ReactNode;
-  disabled?: boolean;
-}
-
-export function Button({ onClick, children, disabled }: ButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-disabled={disabled}
-      className="terminal-button"
-    >
-      {children}
-    </button>
-  );
-}
-```
-
-### CSS / Styling
-
-- ✅ Use CSS custom properties from `globals.css`
-- ✅ No rounded corners (terminal aesthetic)
-- ✅ Monospace font only
-- ✅ Dark background, bright text
-
-```css
-/* ✅ Good */
-.card {
-  border: var(--border-width) solid var(--color-border);
-  background-color: transparent;
-  font-family: var(--font-mono);
-}
-
-/* ❌ Bad */
-.card {
-  border-radius: 8px;
-  background: linear-gradient(to right, #333, #666);
-  font-family: Arial, sans-serif;
-}
-```
-
-## Testing
-
-### Run Tests
-
-```bash
-# Run all tests
-npm run test
-
-# Run with coverage
-npm run test:coverage
-
-# Run in watch mode
-npm run test:watch
-```
-
-### Writing Tests
-
-- Test file naming: `*.test.ts` or `*.test.tsx`
+- Write tests for all new features
+- Maintain >70% code coverage
 - Use descriptive test names
-- Cover edge cases
+- Mock external dependencies
 
-## Project Structure
+### Commits
 
-```
-src/
-├── app/                 # Next.js pages and API routes
-│   ├── api/            # Backend API endpoints
-│   ├── dashboard/      # Dashboard page
-│   └── report/         # Report page
-├── components/         # React components
-│   └── ui/             # Reusable UI components
-├── lib/                # Utility functions
-└── types/              # TypeScript type definitions
-```
+- Use conventional commit messages
+- Keep commits atomic and focused
+- Write descriptive commit messages
 
-## Need Help?
+## Questions?
 
-- 📖 Check the [README](README.md)
-- 🐛 Open an [issue](https://github.com/your-username/hackjudge/issues)
-- 💬 Ask in discussions
+Feel free to open an issue with the `question` label or reach out to maintainers.
 
----
-
-**Thank you for contributing!** 🎉
+Thank you for contributing! 🚀
