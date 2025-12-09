@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint
+        run: npm run lint
+      
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+      
+      - name: Build project
+        run: npm run build
+        env:
+          # Skip environment variable validation during build
+          SKIP_ENV_VALIDATION: true
+
+  # CodeRabbit will automatically review PRs
+  # This job adds a reminder comment
+  coderabbit-reminder:
+    name: CodeRabbit Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Add CodeRabbit reminder
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `🐰 **CodeRabbit Review**
+            
+            This PR will be automatically reviewed by [@coderabbitai](https://github.com/coderabbitai).
+            
+            Please address any feedback before merging.`;
+            
+            // Check if comment already exists
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const hasReminder = comments.data.some(c => c.body.includes('CodeRabbit Review'));
+            
+            if (!hasReminder) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }

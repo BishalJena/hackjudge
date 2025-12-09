@@ -1,26 +1,361 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   HACKJUDGE AI - Terminal-Styled CSS Foundation
+   Typography: Departure Mono | Aesthetic: Dark Terminal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Departure Mono Font Import */
+@font-face {
+  font-family: 'Departure Mono';
+  src: url('/fonts/DepartureMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   CSS Custom Properties
+   ──────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Typography */
+  --font-mono: 'Departure Mono', 'Courier New', 'Menlo', 'Monaco', monospace;
+  
+  /* Color Palette */
+  --color-bg: #0a0e27;
+  --color-bg-secondary: #0d1233;
+  --color-text-primary: #00d9ff;
+  --color-text-secondary: #888888;
+  --color-text-dim: #555555;
+  --color-accent-success: #00ff41;
+  --color-accent-warning: #ffdd00;
+  --color-accent-error: #ff0055;
+  --color-border: #004d66;
+  --color-border-hover: #00d9ff;
+  --color-hover-glow: rgba(0, 217, 255, 0.5);
+  --color-success-glow: rgba(0, 255, 65, 0.4);
+  --color-error-glow: rgba(255, 0, 85, 0.4);
+  
+  /* Spacing */
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 1.5rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 3rem;
+  
+  /* Border */
+  --border-width: 2px;
+  --border-style: solid;
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+   Tailwind Theme Extensions
+   ──────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-text-primary);
+  --color-terminal-bg: var(--color-bg);
+  --color-terminal-bg-secondary: var(--color-bg-secondary);
+  --color-terminal-cyan: var(--color-text-primary);
+  --color-terminal-dim: var(--color-text-secondary);
+  --color-terminal-success: var(--color-accent-success);
+  --color-terminal-warning: var(--color-accent-warning);
+  --color-terminal-error: var(--color-accent-error);
+  --color-terminal-border: var(--color-border);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ────────────────────────────────────────────────────────────────────────────
+   Global Styles
+   ──────────────────────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-mono);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Typography
+   ──────────────────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1rem; }
+
+p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+a {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+a:hover {
+  text-shadow: 0 0 10px var(--color-hover-glow);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Form Elements
+   ──────────────────────────────────────────────────────────────────────────── */
+input, textarea, select {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border: var(--border-width) var(--border-style) var(--color-border);
+  padding: var(--spacing-sm);
+  width: 100%;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-text-primary);
+  box-shadow: 0 0 10px var(--color-hover-glow);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Buttons
+   ──────────────────────────────────────────────────────────────────────────── */
+button {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border: var(--border-width) var(--border-style) var(--color-border);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--color-text-primary);
+  box-shadow: 0 0 15px var(--color-hover-glow);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background-color: var(--color-text-primary);
+  color: var(--color-bg);
+}
+
+button.primary:hover:not(:disabled) {
+  background-color: transparent;
+  color: var(--color-text-primary);
+}
+
+button.success {
+  border-color: var(--color-accent-success);
+  color: var(--color-accent-success);
+}
+
+button.success:hover:not(:disabled) {
+  box-shadow: 0 0 15px var(--color-success-glow);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Cards & Containers
+   ──────────────────────────────────────────────────────────────────────────── */
+.terminal-card {
+  border: var(--border-width) var(--border-style) var(--color-border);
+  padding: var(--spacing-md);
+  margin: var(--spacing-md) 0;
+  background-color: var(--color-bg-secondary);
+}
+
+.terminal-card:hover {
+  border-color: var(--color-border-hover);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   ASCII Separators
+   ──────────────────────────────────────────────────────────────────────────── */
+.separator {
+  border: none;
+  border-top: var(--border-width) var(--border-style) var(--color-border);
+  margin: var(--spacing-lg) 0;
+}
+
+.separator-double {
+  border: none;
+  height: 4px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--color-border) 0,
+    var(--color-border) 8px,
+    transparent 8px,
+    transparent 12px
+  );
+  margin: var(--spacing-lg) 0;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Progress Bars (ASCII Style)
+   ──────────────────────────────────────────────────────────────────────────── */
+.progress-bar {
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.progress-track {
+  display: flex;
+  overflow: hidden;
+}
+
+.progress-fill {
+  color: var(--color-accent-success);
+}
+
+.progress-empty {
+  color: var(--color-text-dim);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Status Indicators
+   ──────────────────────────────────────────────────────────────────────────── */
+.status-success {
+  color: var(--color-accent-success);
+}
+
+.status-warning {
+  color: var(--color-accent-warning);
+}
+
+.status-error {
+  color: var(--color-accent-error);
+}
+
+.status-pending {
+  color: var(--color-text-secondary);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Animations
+   ──────────────────────────────────────────────────────────────────────────── */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+}
+
+.text-flicker {
+  animation: flicker 0.1s infinite;
+}
+
+/* ASCII Spinner Animation */
+@keyframes spin-ascii {
+  0% { content: '|'; }
+  25% { content: '/'; }
+  50% { content: '─'; }
+  75% { content: '\\'; }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Utility Classes
+   ──────────────────────────────────────────────────────────────────────────── */
+.text-cyan { color: var(--color-text-primary); }
+.text-dim { color: var(--color-text-secondary); }
+.text-success { color: var(--color-accent-success); }
+.text-warning { color: var(--color-accent-warning); }
+.text-error { color: var(--color-accent-error); }
+
+.bg-terminal { background-color: var(--color-bg); }
+.bg-terminal-secondary { background-color: var(--color-bg-secondary); }
+
+.border-terminal { border-color: var(--color-border); }
+.border-cyan { border-color: var(--color-text-primary); }
+
+.glow-cyan { text-shadow: 0 0 10px var(--color-hover-glow); }
+.glow-success { text-shadow: 0 0 10px var(--color-success-glow); }
+.glow-error { text-shadow: 0 0 10px var(--color-error-glow); }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Scrollbar Styling
+   ──────────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 1px solid var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-primary);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Selection
+   ──────────────────────────────────────────────────────────────────────────── */
+::selection {
+  background-color: var(--color-text-primary);
+  color: var(--color-bg);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Responsive Adjustments
+   ──────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  :root {
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+  }
+  
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  h3 { font-size: 1rem; }
+  
+  body {
+    font-size: 0.875rem;
+  }
 }

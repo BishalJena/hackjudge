@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# CodeRabbit Configuration for HackJudge AI
+# AI-powered code review to ensure clean, maintainable code
+
+language: "en-US"
+
+# Enable early access features
+early_access: true
+
+# Review configuration
+reviews:
+  # Request changes on issues found
+  request_changes_workflow: true
+  
+  # Enable high-level summary in PR comments
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+  
+  # Auto-review settings
+  auto_review:
+    enabled: true
+    drafts: false  # Don't review draft PRs
+    base_branches:
+      - main
+      - develop
+  
+  # Review profile - assertive for thorough reviews
+  profile: "assertive"
+  
+  # Poem in review - disabled for professionalism
+  poem: false
+  
+  # Path-based review instructions
+  path_instructions:
+    - path: "src/components/**/*.tsx"
+      instructions: |
+        Review React components for:
+        - Proper TypeScript typing (no 'any' types)
+        - Accessibility (ARIA labels, keyboard navigation)
+        - Performance (memoization where appropriate)
+        - Terminal aesthetic consistency
+    
+    - path: "src/app/api/**/*.ts"
+      instructions: |
+        Review API routes for:
+        - Proper error handling with try-catch
+        - Input validation
+        - Consistent response format
+        - Security (no exposed secrets, proper auth checks)
+    
+    - path: "src/lib/**/*.ts"
+      instructions: |
+        Review utility functions for:
+        - Pure functions where possible
+        - Proper TypeScript types
+        - Edge case handling
+        - Documentation comments
+    
+    - path: "**/*.css"
+      instructions: |
+        Review CSS for:
+        - Terminal aesthetic adherence (no rounded corners)
+        - CSS variable usage
+        - Responsive design
+        - Accessibility (contrast ratios)
+
+# Chat configuration for interactive reviews
+chat:
+  auto_reply: true
+
+# Knowledge base for better context
+knowledge_base:
+  learnings:
+    scope: "auto"
+  issues:
+    scope: "auto"
+  jira:
+    project_keys: []
+  linear:
+    team_keys: []
