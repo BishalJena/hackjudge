@@ -307,6 +307,14 @@ tasks:
         description: Use Kestra's native AI plugin to summarize project analysis and provide actionable decisions
         apiKey: "{{ secret('OPENAI_API_KEY') }}"
         model: gpt-4o-mini
+        # Resilience configuration
+        timeout: PT5M
+        clientTimeout: 120
+        retry:
+          type: exponential
+          maxAttempt: 3
+          interval: PT10S
+          maxDuration: PT10M
         messages:
           - role: system
             content: |
@@ -346,6 +354,9 @@ tasks:
       # ─────────────────────────────────────────────────────────────
       - id: save_ai_summary
         type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: python:3.11-slim
         commands:
           - |
             cat > artifacts/ai_summary.json << 'EOF'
@@ -356,7 +367,8 @@ tasks:
             }
             EOF
           - test -s artifacts/ai_summary.json || (echo "Error: AI summary file is empty or not created" && exit 1)
-          - echo "✅ AI Summary saved to artifacts/ai_summary.json"
+          - python3 -c "import json; json.load(open('artifacts/ai_summary.json'))" || (echo "Error: AI summary file contains invalid JSON" && exit 1)
+          - echo "✅ AI Summary saved and validated"
 
 
       # ─────────────────────────────────────────────────────────────
@@ -473,8 +485,7 @@ tasks:
               try:
                   with open(ai_path) as f:
                       ai_summary = json.load(f)
-                      ai_summary["available"] = True
-                  print("✓ Loaded AI summary from Kestra OpenAI plugin")
+                  print("✓ Loaded AI summary file from Kestra OpenAI plugin")
               except json.JSONDecodeError as e:
                   print(f"⚠ AI summary is not valid JSON: {e}")
                   ai_summary = {"available": False, "error": "Invalid JSON"}
@@ -482,8 +493,8 @@ tasks:
                   print(f"⚠ Unexpected error loading AI summary: {e}")
                   ai_summary = {"available": False, "error": str(e)}
               
-              # Validate AI response structure
-              if ai_summary.get("available"):
+              # Validate AI response structure - only set available=True after validation passes
+              if "response" in ai_summary:
                   try:
                       response_content = ai_summary.get("response")
                       if isinstance(response_content, str):
@@ -496,15 +507,21 @@ tasks:
                       missing_keys = [k for k in required_keys if k not in parsed_response]
                       if missing_keys:
                           print(f"⚠ AI response missing keys: {missing_keys}")
+                          ai_summary["available"] = False
                           ai_summary["validationWarning"] = f"Missing keys: {missing_keys}"
                       else:
                           print("✓ AI response structure validated")
-                          ai_summary["parsedResponse"] = parsed_response
+                          # Flatten parsed fields into top level for easy access
+                          ai_summary.update(parsed_response)
+                          ai_summary["available"] = True
                   except json.JSONDecodeError as e:
                       print(f"⚠ AI response content is not valid JSON: {e}")
+                      ai_summary["available"] = False
                       ai_summary["validationError"] = str(e)
                   except Exception as e:
                       print(f"⚠ Error validating AI response: {e}")
+                      ai_summary["available"] = False
+
           
           # Build award eligibility
           awards = []
