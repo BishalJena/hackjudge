@@ -352,7 +352,7 @@ tasks:
             {
               "model": "gpt-4o-mini",
               "provider": "Kestra Native OpenAI Plugin",
-              "response": {{ outputs.ai_summarize_analysis.choices[0].message.content | json }}
+              "response": {{ outputs.ai_summarize_analysis.choices[0].message.content | toJson }}
             }
             EOF
           - test -s artifacts/ai_summary.json || (echo "Error: AI summary file is empty or not created" && exit 1)
