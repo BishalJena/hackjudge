@@ -324,6 +324,21 @@ tasks:
               Project URL: {{ trigger.body.repo_url }}
               Branch: {{ trigger.body.branch ?? 'main' }}
               
+              Project Metadata:
+              {{ read('artifacts/metadata.json') }}
+              
+              Code Quality Analysis:
+              {{ read('artifacts/agent_code_quality.json') }}
+              
+              UX & Design Analysis:
+              {{ read('artifacts/agent_ux.json') }}
+              
+              Product Analysis:
+              {{ read('artifacts/agent_product.json') }}
+              
+              Presentation & Documentation:
+              {{ read('artifacts/agent_presentation.json') }}
+              
               Please provide your analysis in JSON format.
 
       # ─────────────────────────────────────────────────────────────
@@ -337,10 +352,12 @@ tasks:
             {
               "model": "gpt-4o-mini",
               "provider": "Kestra Native OpenAI Plugin",
-              "response": {{ outputs.ai_summarize_analysis.choices | first | jq('.message.content') }}
+              "response": {{ outputs.ai_summarize_analysis.choices[0].message.content | json }}
             }
             EOF
+          - test -s artifacts/ai_summary.json || (echo "Error: AI summary file is empty or not created" && exit 1)
           - echo "✅ AI Summary saved to artifacts/ai_summary.json"
+
 
       # ─────────────────────────────────────────────────────────────
       # STEP 6: Generate Final Report
@@ -441,8 +458,13 @@ tasks:
           coderabbit = {"hasCodeRabbit": False, "canSetup": True}
           cr_path = artifacts_dir / "coderabbit_check.json"
           if cr_path.exists():
-              with open(cr_path) as f:
-                  coderabbit = json.load(f)
+              try:
+                  with open(cr_path) as f:
+                      coderabbit = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"⚠ CodeRabbit config is not valid JSON: {e}")
+              except Exception as e:
+                  print(f"⚠ Unexpected error loading CodeRabbit config: {e}")
           
           # Load AI Summary from Kestra Native AI Plugin
           ai_summary = {"available": False}
@@ -453,8 +475,20 @@ tasks:
                       ai_summary = json.load(f)
                       ai_summary["available"] = True
                   print("✓ Loaded AI summary from Kestra OpenAI plugin")
-              except:
-                  print("⚠ AI summary exists but could not be parsed")
+              except json.JSONDecodeError as e:
+                  print(f"⚠ AI summary is not valid JSON: {e}")
+                  ai_summary = {"available": False, "error": "Invalid JSON"}
+              except Exception as e:
+                  print(f"⚠ Unexpected error loading AI summary: {e}")
+                  ai_summary = {"available": False, "error": str(e)}
+              
+              # Validate expected keys if available
+              if ai_summary.get("available"):
+                  required_keys = ["response"]
+                  for key in required_keys:
+                      if key not in ai_summary:
+                          print(f"⚠ AI summary missing required key: {key}")
+                          ai_summary["available"] = False
           
           # Build award eligibility
           awards = []
