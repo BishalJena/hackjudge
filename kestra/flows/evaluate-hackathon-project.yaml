@@ -482,13 +482,29 @@ tasks:
                   print(f"⚠ Unexpected error loading AI summary: {e}")
                   ai_summary = {"available": False, "error": str(e)}
               
-              # Validate expected keys if available
+              # Validate AI response structure
               if ai_summary.get("available"):
-                  required_keys = ["response"]
-                  for key in required_keys:
-                      if key not in ai_summary:
-                          print(f"⚠ AI summary missing required key: {key}")
-                          ai_summary["available"] = False
+                  try:
+                      response_content = ai_summary.get("response")
+                      if isinstance(response_content, str):
+                          parsed_response = json.loads(response_content)
+                      else:
+                          parsed_response = response_content
+                      
+                      # Validate required keys from system prompt
+                      required_keys = ["summary", "submissionReady", "topImprovements", "eligibleTracks"]
+                      missing_keys = [k for k in required_keys if k not in parsed_response]
+                      if missing_keys:
+                          print(f"⚠ AI response missing keys: {missing_keys}")
+                          ai_summary["validationWarning"] = f"Missing keys: {missing_keys}"
+                      else:
+                          print("✓ AI response structure validated")
+                          ai_summary["parsedResponse"] = parsed_response
+                  except json.JSONDecodeError as e:
+                      print(f"⚠ AI response content is not valid JSON: {e}")
+                      ai_summary["validationError"] = str(e)
+                  except Exception as e:
+                      print(f"⚠ Error validating AI response: {e}")
           
           # Build award eligibility
           awards = []
