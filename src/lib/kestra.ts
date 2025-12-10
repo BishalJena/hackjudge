@@ -5,6 +5,14 @@
 
 const KESTRA_API_URL = process.env.KESTRA_API_URL || 'http://localhost:8080/api/v1';
 const KESTRA_NAMESPACE = process.env.KESTRA_NAMESPACE || 'hackjudge';
+const KESTRA_USERNAME = process.env.KESTRA_USERNAME || 'admin@kestra.io';
+const KESTRA_PASSWORD = process.env.KESTRA_PASSWORD || 'Admin1234';
+
+// Generate Basic Auth header
+function getAuthHeader(): string {
+    const credentials = Buffer.from(`${KESTRA_USERNAME}:${KESTRA_PASSWORD}`).toString('base64');
+    return `Basic ${credentials}`;
+}
 
 export interface KesTraExecution {
     id: string;
@@ -42,8 +50,9 @@ export async function triggerEvaluation(params: {
     settings?: Record<string, unknown>;
 }): Promise<{ executionId: string } | null> {
     try {
+        // Use webhook endpoint (api_trigger with key hackjudge-evaluate)
         const response = await fetch(
-            `${KESTRA_API_URL}/executions/${KESTRA_NAMESPACE}/evaluate-hackathon-project`,
+            `${KESTRA_API_URL}/executions/webhook/${KESTRA_NAMESPACE}/evaluate-hackathon-project/hackjudge-evaluate`,
             {
                 method: 'POST',
                 headers: {
@@ -60,7 +69,8 @@ export async function triggerEvaluation(params: {
         );
 
         if (!response.ok) {
-            console.error('Kestra trigger failed:', response.status);
+            const errorText = await response.text();
+            console.error('Kestra trigger failed:', response.status, errorText);
             return null;
         }
 
@@ -85,6 +95,7 @@ export async function getExecutionStatus(
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
+                    'Authorization': getAuthHeader(),
                 },
             }
         );
@@ -191,6 +202,7 @@ export async function getExecutionOutputs(
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
+                    'Authorization': getAuthHeader(),
                 },
             }
         );
@@ -218,6 +230,9 @@ export async function downloadArtifact(
             `${KESTRA_API_URL}/executions/${executionId}/file?path=${encodeURIComponent(path)}`,
             {
                 method: 'GET',
+                headers: {
+                    'Authorization': getAuthHeader(),
+                },
             }
         );
 
@@ -237,7 +252,9 @@ export async function downloadArtifact(
  */
 export async function checkKestraHealth(): Promise<boolean> {
     try {
-        const response = await fetch(`${KESTRA_API_URL.replace('/api/v1', '')}/health`, {
+        // Kestra management API is on port 8081, not 8080
+        const baseUrl = KESTRA_API_URL.replace('/api/v1', '').replace(':8080', ':8081');
+        const response = await fetch(`${baseUrl}/health`, {
             method: 'GET',
             signal: AbortSignal.timeout(5000),
         });

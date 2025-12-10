@@ -1,10 +1,10 @@
 /**
  * LLM API Integration
- * Unified interface for Together AI and OpenAI APIs
+ * Unified interface for Together AI, OpenAI, and OpenRouter APIs
  */
 
 export interface LLMConfig {
-    provider: 'together' | 'openai';
+    provider: 'together' | 'openai' | 'openrouter';
     apiKey: string;
     model?: string;
     temperature?: number;
@@ -31,12 +31,14 @@ export interface LLMResponse {
 const DEFAULT_MODELS = {
     together: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
     openai: 'gpt-4-turbo-preview',
+    openrouter: 'meta-llama/llama-3.1-70b-instruct',
 };
 
 // API endpoints
 const API_ENDPOINTS = {
     together: 'https://api.together.xyz/v1/chat/completions',
     openai: 'https://api.openai.com/v1/chat/completions',
+    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
 };
 
 /**
@@ -53,12 +55,20 @@ export function createLLMClient(config: LLMConfig) {
             const endpoint = API_ENDPOINTS[provider];
             const selectedModel = model || DEFAULT_MODELS[provider];
 
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+            };
+
+            // OpenRouter requires additional headers
+            if (provider === 'openrouter') {
+                headers['HTTP-Referer'] = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+                headers['X-Title'] = 'HackJudge AI';
+            }
+
             const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${apiKey}`,
-                },
+                headers,
                 body: JSON.stringify({
                     model: selectedModel,
                     messages,
@@ -129,12 +139,14 @@ export function createLLMClient(config: LLMConfig) {
 
 /**
  * Get default LLM client from environment variables
+ * Priority: Together AI → OpenRouter → OpenAI
  */
 export function getDefaultLLMClient() {
-    // Prefer Together AI, fallback to OpenAI
     const togetherKey = process.env.TOGETHER_API_KEY;
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
 
+    // Priority: Together AI first (sponsor tool)
     if (togetherKey) {
         return createLLMClient({
             provider: 'together',
@@ -142,6 +154,15 @@ export function getDefaultLLMClient() {
         });
     }
 
+    // Fallback: OpenRouter
+    if (openrouterKey) {
+        return createLLMClient({
+            provider: 'openrouter',
+            apiKey: openrouterKey,
+        });
+    }
+
+    // Fallback: OpenAI
     if (openaiKey) {
         return createLLMClient({
             provider: 'openai',

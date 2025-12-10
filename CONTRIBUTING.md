@@ -28,8 +28,8 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 
 1. **Fork and clone the repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/hackjudge.git
-   cd hackjudge
+   git clone https://github.com/YOUR_USERNAME/HackJudge.git
+   cd HackJudge
    ```
 
 2. **Install dependencies**

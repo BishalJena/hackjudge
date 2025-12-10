@@ -70,6 +70,7 @@ export function DashboardClient() {
     const [logs, setLogs] = useState<string[]>([]);
     const [elapsedTime, setElapsedTime] = useState(0);
     const [error, setError] = useState('');
+    const [jobId, setJobId] = useState<string | null>(null);
 
     // Timer for elapsed time
     useEffect(() => {
@@ -82,9 +83,9 @@ export function DashboardClient() {
         return () => clearInterval(interval);
     }, [isEvaluating]);
 
-    // Simulate evaluation progress (replace with real SSE/WebSocket)
+    // Simulate evaluation progress (replace with real SSE/WebSocket for Kestra progress)
     useEffect(() => {
-        if (!isEvaluating) return;
+        if (!isEvaluating || !jobId) return;
 
         const simulateProgress = async () => {
             for (let i = 0; i < INITIAL_STEPS.length; i++) {
@@ -97,7 +98,7 @@ export function DashboardClient() {
                 setCurrentStep(i);
                 setLogs((prev) => [...prev, `> Starting: ${INITIAL_STEPS[i].name}...`]);
 
-                // Simulate step duration
+                // Simulate step duration (TODO: replace with real SSE from /api/evaluate/[jobId]/progress)
                 await new Promise((resolve) =>
                     window.setTimeout(resolve, 1500 + Math.random() * 1000)
                 );
@@ -111,14 +112,14 @@ export function DashboardClient() {
                 setLogs((prev) => [...prev, `✓ Completed: ${INITIAL_STEPS[i].name}`]);
             }
 
-            // Navigate to report page
+            // Navigate to report page with real job ID
             setLogs((prev) => [...prev, '> Evaluation complete! Redirecting...']);
             await new Promise((resolve) => window.setTimeout(resolve, 1000));
-            router.push('/report/demo');
+            router.push(`/report/${jobId}`);
         };
 
         simulateProgress();
-    }, [isEvaluating, router]);
+    }, [isEvaluating, jobId, router]);
 
     const formatTime = (seconds: number): string => {
         const mins = Math.floor(seconds / 60);
@@ -138,6 +139,42 @@ export function DashboardClient() {
         setCurrentStep(0);
         setLogs(['> Initializing evaluation...']);
         setElapsedTime(0);
+
+        try {
+            // Call the real API
+            const response = await fetch('/api/evaluate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    repoUrl: repoUrl.trim(),
+                    branch,
+                    hackathonUrl: hackathonUrl.trim() || undefined,
+                    settings: {
+                        buildType,
+                        timeout: parseInt(timeout),
+                        skipLighthouse,
+                        skipScreenshots,
+                    },
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to start evaluation');
+            }
+
+            setJobId(data.data.jobId);
+            setLogs((prev) => [
+                ...prev,
+                `> Job created: ${data.data.jobId}`,
+                `> Mode: ${data.data.mode}`,
+                data.data.executionId ? `> Kestra execution: ${data.data.executionId}` : '> Running in mock mode',
+            ]);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to start evaluation');
+            setIsEvaluating(false);
+        }
     };
 
     // Evaluation Progress View

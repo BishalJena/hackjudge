@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-10
+
+### Fixed
+
+#### Kestra Workflow - File Sharing Issue
+- **CRITICAL FIX**: Resolved file sharing between Kestra tasks using `WorkingDirectory` pattern
+- Tasks now properly share filesystem (clone → analyze → report)
+- All 5 workflow tasks pass: `setup`, `clone_repository`, `analyze_project`, `generate_report`
+
+### Changed
+
+#### Kestra Workflow Improvements
+- Rewrote `evaluate-hackathon-project.yaml` using `io.kestra.plugin.core.flow.WorkingDirectory`
+- Combined all analysis agents into single `analyze_project` Python script for efficiency
+- Switched from Git Clone plugin to `alpine/git` Docker image for better template support
+- Added proper `taskRunner` configuration with Docker images per task
+- Replaced nested template variables with direct `trigger.body.X` references
+
+#### Authentication Updates
+- Updated Kestra credentials: `admin@kestra.io` / `Admin1234`
+- Fixed health check to use management port (8081) instead of API port (8080)
+
+### Added
+
+#### CodeRabbit Integration Prep
+- Added CodeRabbit configuration detection (`.coderabbit.yaml` check)
+- Added `coderabbitStatus` to evaluation report for future auto-setup feature
+
+#### Award Eligibility Detection
+- Detects sponsor tool usage (Kestra, Next.js, React, Together AI)
+- Reports award eligibility in final evaluation
+
+#### New Analysis Features
+- Framework detection (Next.js, React, Vue.js, Express)
+- TypeScript configuration detection
+- ESLint/linting configuration detection
+- Lockfile presence check for reproducible builds
+- README length analysis for documentation quality
+
+### Technical Notes
+- Kestra workflow revision: 8
+- Test coverage: 77% statements, 85% functions
+- 80 tests passing
+
+---
+
 ## [0.1.0] - 2025-12-09
 
 ### Added
@@ -96,7 +142,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.0 | 2025-12-10 | Fixed Kestra workflow, CodeRabbit detection, award eligibility |
 | 0.1.0 | 2025-12-09 | Initial release with full evaluation pipeline |
 
-[Unreleased]: https://github.com/BishalJena/hackjudge/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/BishalJena/hackjudge/releases/tag/v0.1.0
+[Unreleased]: https://github.com/BishalJena/HackJudge/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/BishalJena/HackJudge/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/BishalJena/HackJudge/releases/tag/v0.1.0

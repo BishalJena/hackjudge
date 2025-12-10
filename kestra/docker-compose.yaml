@@ -1,8 +1,6 @@
 # Kestra Docker Compose for HackJudge AI
 # Run with: docker-compose up -d
 
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -28,19 +26,22 @@ services:
     container_name: hackjudge-kestra
     pull_policy: always
     user: "root"
-    command: server standalone
+    command: server standalone --worker-thread=128
     environment:
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:
             url: jdbc:postgresql://postgres:5432/kestra
-            driverClassName: org.postgresql.Driver
+            driver-class-name: org.postgresql.Driver
             username: kestra
             password: kestra
         kestra:
           server:
             basic-auth:
-              enabled: false
+              username: "admin@kestra.io"
+              password: Admin1234
+          anonymous-usage-report:
+            enabled: false
           repository:
             type: postgres
           storage:
@@ -53,22 +54,22 @@ services:
             tmp-dir:
               path: /tmp/kestra-wd/tmp
           url: http://localhost:8080/
-    ports:
-      - "8080:8080"
-      - "8081:8081"
     volumes:
       - kestra_data:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/kestra-wd:/tmp/kestra-wd
       # Mount flows directory
       - ./flows:/app/flows:ro
+    ports:
+      - "8080:8080"
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - hackjudge
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "-u", "admin@kestra.io:kestra", "http://localhost:8080/api/v1/flows"]
       interval: 30s
       timeout: 10s
       retries: 3
