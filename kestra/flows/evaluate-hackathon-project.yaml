@@ -299,8 +299,82 @@ tasks:
           print("\n✅ All agent analyses complete!")
 
       # ─────────────────────────────────────────────────────────────
-      # STEP 4: Generate Final Report
+      # STEP 4: AI-Powered Analysis Summary (Kestra Native AI Plugin)
+      # Uses OpenAI to summarize findings and make decisions
       # ─────────────────────────────────────────────────────────────
+      - id: ai_summarize_analysis
+        type: io.kestra.plugin.openai.ChatCompletion
+        description: Use Kestra's native AI plugin to summarize project analysis and provide actionable decisions
+        apiKey: "{{ secret('OPENAI_API_KEY') }}"
+        model: gpt-4o-mini
+        # Resilience configuration
+        timeout: PT5M
+        clientTimeout: 120
+        retry:
+          type: exponential
+          maxAttempt: 3
+          interval: PT10S
+          maxDuration: PT10M
+        messages:
+          - role: system
+            content: |
+              You are a hackathon project evaluator AI. Analyze the provided project data and:
+              1. Summarize the project's strengths and weaknesses
+              2. Decide if the project is ready for submission (YES/NO)
+              3. Provide the top 3 actionable improvements
+              4. Suggest which hackathon prize tracks the project qualifies for
+              
+              Respond in JSON format with keys: summary, submissionReady, topImprovements, eligibleTracks
+          - role: user
+            content: |
+              Analyze this hackathon project:
+              
+              Project URL: {{ trigger.body.repo_url }}
+              Branch: {{ trigger.body.branch ?? 'main' }}
+              
+              Project Metadata:
+              {{ read('artifacts/metadata.json') }}
+              
+              Code Quality Analysis:
+              {{ read('artifacts/agent_code_quality.json') }}
+              
+              UX & Design Analysis:
+              {{ read('artifacts/agent_ux.json') }}
+              
+              Product Analysis:
+              {{ read('artifacts/agent_product.json') }}
+              
+              Presentation & Documentation:
+              {{ read('artifacts/agent_presentation.json') }}
+              
+              Please provide your analysis in JSON format.
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 5: Save AI Summary to artifacts
+      # ─────────────────────────────────────────────────────────────
+      - id: save_ai_summary
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: python:3.11-slim
+        commands:
+          - |
+            cat > artifacts/ai_summary.json << 'EOF'
+            {
+              "model": "gpt-4o-mini",
+              "provider": "Kestra Native OpenAI Plugin",
+              "response": {{ outputs.ai_summarize_analysis.choices[0].message.content | toJson }}
+            }
+            EOF
+          - test -s artifacts/ai_summary.json || (echo "Error: AI summary file is empty or not created" && exit 1)
+          - python3 -c "import json; json.load(open('artifacts/ai_summary.json'))" || (echo "Error: AI summary file contains invalid JSON" && exit 1)
+          - echo "✅ AI Summary saved and validated"
+
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 6: Generate Final Report
+      # ─────────────────────────────────────────────────────────────
+
       - id: generate_report
         type: io.kestra.plugin.scripts.python.Script
         taskRunner:
@@ -396,8 +470,58 @@ tasks:
           coderabbit = {"hasCodeRabbit": False, "canSetup": True}
           cr_path = artifacts_dir / "coderabbit_check.json"
           if cr_path.exists():
-              with open(cr_path) as f:
-                  coderabbit = json.load(f)
+              try:
+                  with open(cr_path) as f:
+                      coderabbit = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"⚠ CodeRabbit config is not valid JSON: {e}")
+              except Exception as e:
+                  print(f"⚠ Unexpected error loading CodeRabbit config: {e}")
+          
+          # Load AI Summary from Kestra Native AI Plugin
+          ai_summary = {"available": False}
+          ai_path = artifacts_dir / "ai_summary.json"
+          if ai_path.exists():
+              try:
+                  with open(ai_path) as f:
+                      ai_summary = json.load(f)
+                  print("✓ Loaded AI summary file from Kestra OpenAI plugin")
+              except json.JSONDecodeError as e:
+                  print(f"⚠ AI summary is not valid JSON: {e}")
+                  ai_summary = {"available": False, "error": "Invalid JSON"}
+              except Exception as e:
+                  print(f"⚠ Unexpected error loading AI summary: {e}")
+                  ai_summary = {"available": False, "error": str(e)}
+              
+              # Validate AI response structure - only set available=True after validation passes
+              if "response" in ai_summary:
+                  try:
+                      response_content = ai_summary.get("response")
+                      if isinstance(response_content, str):
+                          parsed_response = json.loads(response_content)
+                      else:
+                          parsed_response = response_content
+                      
+                      # Validate required keys from system prompt
+                      required_keys = ["summary", "submissionReady", "topImprovements", "eligibleTracks"]
+                      missing_keys = [k for k in required_keys if k not in parsed_response]
+                      if missing_keys:
+                          print(f"⚠ AI response missing keys: {missing_keys}")
+                          ai_summary["available"] = False
+                          ai_summary["validationWarning"] = f"Missing keys: {missing_keys}"
+                      else:
+                          print("✓ AI response structure validated")
+                          # Flatten parsed fields into top level for easy access
+                          ai_summary.update(parsed_response)
+                          ai_summary["available"] = True
+                  except json.JSONDecodeError as e:
+                      print(f"⚠ AI response content is not valid JSON: {e}")
+                      ai_summary["available"] = False
+                      ai_summary["validationError"] = str(e)
+                  except Exception as e:
+                      print(f"⚠ Error validating AI response: {e}")
+                      ai_summary["available"] = False
+
           
           # Build award eligibility
           awards = []
@@ -431,6 +555,7 @@ tasks:
               "metadata": metadata,
               "awardEligibility": awards,
               "coderabbitStatus": coderabbit,
+              "aiSummary": ai_summary,
               "generatedContent": {
                   "devpostDraft": "",
                   "pitchScript": "",
@@ -438,6 +563,7 @@ tasks:
               },
               "completedAt": datetime.now().isoformat()
           }
+
           
           # Save final report
           with open(artifacts_dir / "final_report.json", "w") as f:
