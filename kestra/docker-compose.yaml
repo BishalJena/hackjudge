@@ -28,6 +28,9 @@ services:
     user: "root"
     command: server standalone --worker-thread=128
     environment:
+      # Secrets must be base64-encoded with SECRET_ prefix
+      # Using OpenRouter API (OpenAI-compatible) - will be replaced with Together AI key later
+      SECRET_OPENAI_API_KEY: c2stb3ItdjEtYTFlNDAyYTljMTA5MGUwZDUwM2U0MjNlNDEzYWIwMTJiNjBjYTllMjU4ODAzYTYwYTNkYTFkMDE3MjdlY2I2NQ==
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:
@@ -54,12 +57,19 @@ services:
             tmp-dir:
               path: /tmp/kestra-wd/tmp
           url: http://localhost:8080/
+        # Local flow synchronization (watches directory for changes)
+        micronaut:
+          io:
+            watch:
+              enabled: true
+              paths:
+                - /app/flows
     volumes:
       - kestra_data:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/kestra-wd:/tmp/kestra-wd
-      # Mount flows directory
-      - ./flows:/app/flows:ro
+      # Mount flows directory - files must be named: main_<namespace>.<flowId>.yml
+      - ./flows:/app/flows
     ports:
       - "8080:8080"
       - "8081:8081"

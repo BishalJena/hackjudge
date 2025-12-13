@@ -38,7 +38,7 @@ export function Navbar({ className = '', variant = 'transparent' }: NavbarProps)
                     {/* Navigation Links */}
                     <div className="hidden md:flex items-center gap-6">
                         <Link
-                            href="/dashboard"
+                            href="/"
                             className="text-sm text-gray-400 hover:text-white transition-colors"
                         >
                             Dashboard

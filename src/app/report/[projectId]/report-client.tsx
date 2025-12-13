@@ -1,316 +1,459 @@
-/**
- * Report Client Component
- * Full evaluation report with all sections
- */
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import {
-    TerminalCard,
-    ProgressBar,
-    Button,
-    ExpansionCard,
-    SectionHeader,
-    BulletList,
-    Modal,
-    CodeBlock,
-} from '@/components/ui';
-import type { EvaluationResult } from '@/types';
+import type { EvaluationResult, Improvement } from '@/types';
 
 interface ReportClientProps {
     result: EvaluationResult;
     projectId: string;
 }
 
-export function ReportClient({ result, projectId }: ReportClientProps) {
-    const [showSubmissionModal, setShowSubmissionModal] = useState(false);
-    const [showPitchModal, setShowPitchModal] = useState(false);
+interface ChatMessage {
+    role: 'assistant' | 'user';
+    content: string;
+}
 
-    const getStatusColor = (status: EvaluationResult['status']) => {
-        switch (status) {
-            case 'STRONG': return 'text-[var(--color-accent-success)]';
-            case 'GOOD': return 'text-[var(--color-text-primary)]';
-            case 'NEEDS_WORK': return 'text-[var(--color-accent-warning)]';
-            case 'WEAK': return 'text-[var(--color-accent-error)]';
+export function ReportClient({ result, projectId }: ReportClientProps) {
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [creatingIssue, setCreatingIssue] = useState<string | null>(null);
+    const [createdIssues, setCreatedIssues] = useState<Record<string, string>>({});
+    const [creatingAllIssues, setCreatingAllIssues] = useState(false);
+    const [allIssuesCreated, setAllIssuesCreated] = useState(0);
+    const [pushingWorkflow, setPushingWorkflow] = useState(false);
+    const [workflowPushed, setWorkflowPushed] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Parse repo owner/name from URL
+    const parseRepoUrl = (url?: string) => {
+        if (!url) return { owner: '', repo: '' };
+        const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+        return match ? { owner: match[1], repo: match[2].replace('.git', '') } : { owner: '', repo: '' };
+    };
+
+    const { owner, repo } = parseRepoUrl(result.repoUrl);
+
+    // Scroll to bottom when messages update
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    // Generate initial analysis messages
+    useEffect(() => {
+        const statusEmoji = {
+            'STRONG': '🟢',
+            'GOOD': '🟡',
+            'NEEDS_WORK': '🟠',
+            'WEAK': '🔴'
+        }[result.status] || '⚪';
+
+        // Extract vision from summary (first sentence usually describes the project)
+        const visionMatch = result.summary?.match(/^[^.!?]+[.!?]/);
+        const inferredVision = visionMatch ? visionMatch[0] : result.summary?.slice(0, 100);
+
+        const initialMessages: ChatMessage[] = [
+            {
+                role: 'assistant',
+                content: `## Analysis Complete ${statusEmoji}\n\nScore: **${result.readinessScore}/100** (${result.status})\n\n${result.summary}`
+            },
+            {
+                role: 'assistant',
+                content: `### 🎯 Project Vision\n\nI understand your project as: *"${inferredVision}"*\n\n**Is this correct?** If not, tell me the actual vision and I'll re-evaluate alignment.`
+            },
+            {
+                role: 'assistant',
+                content: `### 💪 Strengths\n${result.strengths.map(s => `✓ ${s}`).join('\n')}`
+            },
+            {
+                role: 'assistant',
+                content: `### ⚠️ Improvements\n${result.weaknesses.map((w, i) => `${i + 1}. ${w}`).join('\n')}`
+            }
+        ];
+
+        // Add security info if available
+        if (result.security) {
+            const secColor = result.security.score >= 80 ? '🟢' : result.security.score >= 60 ? '🟡' : '🔴';
+            initialMessages.push({
+                role: 'assistant',
+                content: `### 🔒 Security ${secColor}\n\nScore: ${result.security.score}/100\n\nVulnerabilities: ${result.security.vulnerabilities.critical} critical, ${result.security.vulnerabilities.high} high, ${result.security.vulnerabilities.moderate} moderate\n\n${result.security.summary}`
+            });
+        }
+
+        setMessages(initialMessages);
+    }, [result, projectId]);
+
+    // Handle sending a message
+    const handleSendMessage = async () => {
+        if (!input.trim() || isLoading) return;
+
+        const userMessage = input.trim();
+        setInput('');
+        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+        setIsLoading(true);
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId,
+                    messages: [...messages, { role: 'user', content: userMessage }],
+                    codeContext: { files: [], totalSnippets: 0 }
+                }),
+            });
+
+            if (!response.ok) throw new Error('Chat failed');
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let assistantMessage = '';
+
+            setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+
+            while (reader) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.content) {
+                                assistantMessage += data.content;
+                                setMessages(prev => {
+                                    const newMessages = [...prev];
+                                    newMessages[newMessages.length - 1] = {
+                                        role: 'assistant',
+                                        content: assistantMessage
+                                    };
+                                    return newMessages;
+                                });
+                            }
+                        } catch {
+                            // Skip invalid JSON
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Chat error:', error);
+            setMessages(prev => [
+                ...prev,
+                { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }
+            ]);
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const getDimensionVariant = (score: number): 'success' | 'warning' | 'error' | 'default' => {
-        if (score >= 80) return 'success';
-        if (score >= 60) return 'default';
-        if (score >= 40) return 'warning';
-        return 'error';
+    // Create GitHub issue
+    const handleCreateIssue = async (improvement: string, index: number) => {
+        const issueKey = `improvement-${index}`;
+        if (createdIssues[issueKey] || creatingIssue === issueKey) return;
+
+        setCreatingIssue(issueKey);
+
+        try {
+            const response = await fetch('/api/github/create-issue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    owner,
+                    repo,
+                    title: `[HackJudge] ${improvement.slice(0, 60)}...`,
+                    body: `## Improvement\n\n${improvement}\n\n---\n_Created via HackJudge AI | Score: ${result.readinessScore}/100_`,
+                    labels: ['hackjudge', 'improvement']
+                }),
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setCreatedIssues(prev => ({ ...prev, [issueKey]: data.issue.url }));
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `✅ Issue created: [View on GitHub](${data.issue.url})`
+                }]);
+            }
+        } catch (error) {
+            console.error('Failed to create issue:', error);
+        } finally {
+            setCreatingIssue(null);
+        }
+    };
+
+    // Push CI/CD workflow to repo
+    const handlePushWorkflow = async () => {
+        if (!owner || !repo || pushingWorkflow || workflowPushed) return;
+
+        setPushingWorkflow(true);
+        try {
+            const response = await fetch('/api/github/push-workflow', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner, repo }),
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setWorkflowPushed(true);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `✅ CI/CD workflow created! [View on GitHub](${data.file?.url || data.commit?.url})`
+                }]);
+            } else {
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `❌ Failed to create workflow: ${data.error}`
+                }]);
+            }
+        } catch (error) {
+            console.error('Failed to push workflow:', error);
+        } finally {
+            setPushingWorkflow(false);
+        }
+    };
+
+    // Create all issues at once
+    const handleCreateAllIssues = async () => {
+        if (!owner || !repo || creatingAllIssues || allIssuesCreated > 0) return;
+        if (!result.improvements || result.improvements.length === 0) return;
+
+        setCreatingAllIssues(true);
+        try {
+            const response = await fetch('/api/github/create-issues', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    owner,
+                    repo,
+                    improvements: result.improvements,
+                }),
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                setAllIssuesCreated(data.created);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `✅ Created ${data.created} issues!\n\n${data.issues?.map((i: { title: string; url: string }) => `- [${i.title}](${i.url})`).join('\n')}`
+                }]);
+            }
+        } catch (error) {
+            console.error('Failed to create issues:', error);
+        } finally {
+            setCreatingAllIssues(false);
+        }
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'STRONG': return 'text-green-400';
+            case 'GOOD': return 'text-yellow-400';
+            case 'NEEDS_WORK': return 'text-orange-400';
+            case 'WEAK': return 'text-red-400';
+            default: return 'text-terminal-green';
+        }
     };
 
     return (
-        <main className="min-h-screen p-4 md:p-8">
-            <div className="max-w-5xl mx-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-2">
-                    <h1 className="text-2xl font-bold">
-                        <span className="text-[var(--color-text-secondary)]">&gt;</span> Project Readiness Report
-                    </h1>
-                    <Link
-                        href="/dashboard"
-                        className="text-[var(--color-text-dim)] text-sm hover:text-[var(--color-text-primary)]"
-                    >
-                        [New Evaluation]
-                    </Link>
+        <main className="min-h-screen bg-terminal-black text-terminal-green font-mono p-4 md:p-8 selection:bg-terminal-green selection:text-black flex flex-col">
+            {/* Top Status Bar */}
+            <div className="border-b border-terminal-green/30 pb-2 mb-6 flex justify-between items-end uppercase text-xs">
+                <div className="flex gap-6">
+                    <Link href="/" className="hover:text-white">[HOME]</Link>
+                    <Link href="/" className="hover:text-white">[NEW_EVALUATION]</Link>
                 </div>
-                <div className="text-[var(--color-border)] font-mono text-sm mb-6 overflow-hidden">
-                    ════════════════════════════════════════════════════════
+                <div className="text-terminal-dim">
+                    /var/reports/{projectId}.log
                 </div>
+            </div>
 
-                {/* Project Info */}
-                <div className="mb-6 text-sm">
-                    <p>
-                        <span className="text-[var(--color-text-dim)]">Project:</span>{' '}
-                        <span className="text-[var(--color-text-primary)]">{projectId}</span>
-                    </p>
-                    <p>
-                        <span className="text-[var(--color-text-dim)]">Status:</span>{' '}
-                        <span className={getStatusColor(result.status)}>{result.status}</span>
-                    </p>
-                </div>
+            {/* Split Pane - Matching evaluation page layout */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+                {/* Left Pane: Score & Dimensions */}
+                <div className="lg:col-span-4 border border-terminal-green/30 p-4 flex flex-col h-[600px]">
+                    <div className="text-xs text-terminal-dim mb-4 border-b border-terminal-green/10 pb-2">
+                        ANALYSIS_SUMMARY
+                    </div>
 
-                {/* Readiness Score */}
-                <TerminalCard className="mb-8" variant="highlight">
-                    <div className="text-center py-4">
-                        <div className="text-6xl font-bold text-[var(--color-text-primary)] mb-2">
-                            {result.readinessScore}
-                            <span className="text-2xl text-[var(--color-text-dim)]"> / 100</span>
+                    {/* Score Display */}
+                    <div className="text-center py-4 border-b border-terminal-green/10 mb-4">
+                        <div className="text-6xl font-bold mb-1">{result.readinessScore}</div>
+                        <div className="text-xs text-terminal-dim mb-2">READINESS_SCORE</div>
+                        <div className={`text-sm font-bold ${getStatusColor(result.status)}`}>
+                            {result.status}
                         </div>
-                        <div className="text-[var(--color-border)] font-mono text-sm mb-4 overflow-hidden">
-                            ════════════════════════════════════════
-                        </div>
-                        <div className={`text-xl font-bold ${getStatusColor(result.status)}`}>
-                            Status: ✓ {result.status}
+                        <div className="mt-3 h-2 bg-terminal-dim/20 w-full">
+                            <div
+                                className="h-full bg-terminal-green transition-all duration-500"
+                                style={{ width: `${result.readinessScore}%` }}
+                            />
                         </div>
                     </div>
-                </TerminalCard>
 
-                {/* Summary */}
-                <SectionHeader title="Summary" />
-                <TerminalCard className="mb-8">
-                    <p className="text-[var(--color-text-secondary)]">{result.summary}</p>
-                </TerminalCard>
-
-                {/* Dimensions */}
-                <SectionHeader title="Dimensions" />
-                <TerminalCard className="mb-8">
-                    <div className="space-y-4">
-                        <ProgressBar
-                            label="Innovation"
-                            value={result.dimensions.innovation}
-                            variant={getDimensionVariant(result.dimensions.innovation)}
-                        />
-                        <ProgressBar
-                            label="Technical"
-                            value={result.dimensions.technical}
-                            variant={getDimensionVariant(result.dimensions.technical)}
-                        />
-                        <ProgressBar
-                            label="UX & Design"
-                            value={result.dimensions.ux}
-                            variant={getDimensionVariant(result.dimensions.ux)}
-                        />
-                        <ProgressBar
-                            label="Performance"
-                            value={result.dimensions.performance}
-                            variant={getDimensionVariant(result.dimensions.performance)}
-                        />
-                        <ProgressBar
-                            label="Code Quality"
-                            value={result.dimensions.codeQuality}
-                            variant={getDimensionVariant(result.dimensions.codeQuality)}
-                        />
-                        <ProgressBar
-                            label="Presentation"
-                            value={result.dimensions.presentation}
-                            variant={getDimensionVariant(result.dimensions.presentation)}
-                        />
-                    </div>
-                </TerminalCard>
-
-                {/* Key Strengths */}
-                <SectionHeader title="Key Strengths" />
-                <TerminalCard className="mb-8">
-                    <BulletList items={result.strengths} variant="success" />
-                </TerminalCard>
-
-                {/* Improvements Needed */}
-                <SectionHeader title="Improvements Needed" />
-                <TerminalCard className="mb-8">
-                    <BulletList items={result.weaknesses} variant="warning" />
-                </TerminalCard>
-
-                {/* Award Eligibility */}
-                <SectionHeader title="Award Eligibility" />
-                <TerminalCard className="mb-8">
-                    <div className="space-y-2">
-                        {result.awardEligibility.map((award, index) => (
-                            <div key={index} className="flex items-center gap-3">
-                                <span className={
-                                    award.eligible
-                                        ? 'text-[var(--color-accent-success)]'
-                                        : award.confidence > 50
-                                            ? 'text-[var(--color-accent-warning)]'
-                                            : 'text-[var(--color-accent-error)]'
-                                }>
-                                    {award.eligible ? '✓' : award.confidence > 50 ? '⋯' : '✗'}
+                    {/* Dimensions - Scrollable */}
+                    <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+                        <div className="text-xs text-terminal-dim mb-2">DIMENSIONS</div>
+                        {Object.entries(result.dimensions).map(([key, value]) => (
+                            <div key={key} className="flex items-center gap-2">
+                                <span className="text-xs uppercase w-24 truncate" title={key}>
+                                    {key}
                                 </span>
-                                <span className="text-[var(--color-text-secondary)]">{award.name}</span>
-                                {award.reason && (
-                                    <span className="text-[var(--color-text-dim)] text-sm">({award.reason})</span>
-                                )}
+                                <div className="flex-1 h-1.5 bg-terminal-dim/20">
+                                    <div
+                                        className="h-full bg-terminal-green"
+                                        style={{ width: `${value}%` }}
+                                    />
+                                </div>
+                                <span className="text-xs w-8 text-right">{value}</span>
                             </div>
                         ))}
                     </div>
-                </TerminalCard>
 
-                {/* Agent Feedback (Expandable) */}
-                <SectionHeader title="Agent Feedback" />
-                <div className="space-y-4 mb-8">
-                    {result.agentFeedback.map((agent, index) => (
-                        <ExpansionCard
-                            key={index}
-                            title={agent.agentName}
-                            badge={`${agent.score}/100`}
-                            variant={agent.score >= 80 ? 'success' : agent.score >= 60 ? 'default' : 'warning'}
+                    {/* Quick Actions */}
+                    <div className="border-t border-terminal-green/10 pt-4 space-y-2">
+                        <div className="text-xs text-terminal-dim mb-2">QUICK_ACTIONS</div>
+                        <button
+                            onClick={() => {
+                                setInput('Explain why this project scored ' + result.readinessScore + '/100');
+                            }}
+                            className="w-full text-left text-xs px-3 py-2 border border-terminal-green/30 hover:bg-terminal-green/10"
                         >
-                            <div className="space-y-4">
-                                <div className="flex gap-4 text-sm">
-                                    <span className="text-[var(--color-text-dim)]">
-                                        Score: {agent.score}/100 | Confidence: {agent.confidence}%
-                                    </span>
-                                </div>
-
-                                <blockquote className="border-l-2 border-[var(--color-border)] pl-4 italic text-[var(--color-text-secondary)]">
-                                    &ldquo;{agent.judgeComment}&rdquo;
-                                    <footer className="text-[var(--color-text-dim)] text-sm mt-1">— Judge Agent</footer>
-                                </blockquote>
-
-                                {agent.strengths.length > 0 && (
-                                    <div>
-                                        <h5 className="text-sm font-bold text-[var(--color-accent-success)] mb-2">Strengths:</h5>
-                                        <BulletList items={agent.strengths} variant="success" />
-                                    </div>
-                                )}
-
-                                {agent.weaknesses.length > 0 && (
-                                    <div>
-                                        <h5 className="text-sm font-bold text-[var(--color-accent-warning)] mb-2">Areas for Improvement:</h5>
-                                        <BulletList items={agent.weaknesses} variant="warning" />
-                                    </div>
-                                )}
-                            </div>
-                        </ExpansionCard>
-                    ))}
-                </div>
-
-                {/* Improvement Roadmap (Expandable) */}
-                <SectionHeader title="Top Improvements" />
-                <div className="space-y-4 mb-8">
-                    {result.improvements.map((improvement, index) => (
-                        <ExpansionCard
-                            key={index}
-                            title={`${improvement.rank}. [${improvement.category.toUpperCase()}] ${improvement.title}`}
-                            badge={`+${improvement.impact} pts`}
-                            variant={improvement.category === 'quick-win' ? 'success' : 'default'}
+                            [EXPLAIN_SCORE]
+                        </button>
+                        <button
+                            onClick={() => setInput('What should I fix first?')}
+                            className="w-full text-left text-xs px-3 py-2 border border-terminal-green/30 hover:bg-terminal-green/10"
                         >
-                            <div className="space-y-3 text-sm">
-                                <p>
-                                    <span className="text-[var(--color-text-dim)]">Issue:</span>{' '}
-                                    <span className="text-[var(--color-text-secondary)]">{improvement.issue}</span>
-                                </p>
-                                <p>
-                                    <span className="text-[var(--color-text-dim)]">Impact:</span>{' '}
-                                    <span className="text-[var(--color-accent-success)]">+{improvement.impact} pts</span>
-                                    <span className="text-[var(--color-text-dim)]"> | Effort:</span>{' '}
-                                    <span className="text-[var(--color-text-secondary)]">{improvement.effort}h</span>
-                                </p>
-                                {improvement.actionItems.length > 0 && (
-                                    <div>
-                                        <h5 className="text-[var(--color-text-dim)] mb-1">Action Items:</h5>
-                                        <BulletList items={improvement.actionItems} />
-                                    </div>
-                                )}
-                            </div>
-                        </ExpansionCard>
-                    ))}
-                </div>
+                            [PRIORITIZE_FIXES]
+                        </button>
 
-                {/* Actions */}
-                <SectionHeader title="Actions" />
-                <TerminalCard className="mb-8">
-                    <div className="flex flex-wrap gap-4">
-                        <Button onClick={() => setShowSubmissionModal(true)}>
-                            Generate Submission Draft
-                        </Button>
-                        <Button onClick={() => setShowPitchModal(true)}>
-                            Generate Pitch Script
-                        </Button>
-                        <Button variant="ghost" onClick={() => window.print()}>
-                            Export Report
-                        </Button>
+                        {/* CI/CD Push Button */}
+                        {owner && repo && (
+                            <button
+                                onClick={handlePushWorkflow}
+                                disabled={pushingWorkflow || workflowPushed}
+                                className="w-full text-left text-xs px-3 py-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 disabled:opacity-50"
+                            >
+                                {workflowPushed ? '[CI/CD_CREATED ✓]' : pushingWorkflow ? '[PUSHING...]' : '[SETUP_CI/CD]'}
+                            </button>
+                        )}
+
+                        {/* Batch Issue Creation */}
+                        {owner && repo && result.improvements && result.improvements.length > 0 && (
+                            <button
+                                onClick={handleCreateAllIssues}
+                                disabled={creatingAllIssues || allIssuesCreated > 0}
+                                className="w-full text-left text-xs px-3 py-2 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 disabled:opacity-50"
+                            >
+                                {allIssuesCreated > 0
+                                    ? `[${allIssuesCreated}_ISSUES_CREATED ✓]`
+                                    : creatingAllIssues
+                                        ? '[CREATING_ISSUES...]'
+                                        : `[CREATE_ALL_ISSUES (${result.improvements.length})]`}
+                            </button>
+                        )}
+
+                        <button
+                            onClick={() => navigator.clipboard.writeText(JSON.stringify(result, null, 2))}
+                            className="w-full text-left text-xs px-3 py-2 border border-terminal-green/30 hover:bg-terminal-green/10"
+                        >
+                            [COPY_JSON]
+                        </button>
                     </div>
-                </TerminalCard>
+                </div>
 
-                {/* Submission Draft Modal */}
-                <Modal
-                    isOpen={showSubmissionModal}
-                    onClose={() => setShowSubmissionModal(false)}
-                    title="DevPost Submission Draft"
-                    size="lg"
-                    footer={
-                        <div className="flex gap-3">
-                            <Button onClick={() => navigator.clipboard.writeText(result.generatedContent.devpostDraft)}>
-                                Copy All
-                            </Button>
-                            <Button variant="ghost" onClick={() => setShowSubmissionModal(false)}>
-                                Close
-                            </Button>
+                {/* Right Pane: Chat Analysis */}
+                <div className="lg:col-span-8 border border-terminal-green/30 flex flex-col bg-black/50 h-[600px]">
+                    {/* Header */}
+                    <div className="text-xs text-terminal-dim p-4 border-b border-terminal-green/10 flex justify-between">
+                        <span>ANALYSIS_CHAT</span>
+                        <span>HACKJUDGE_AI</span>
+                    </div>
+
+                    {/* Messages - Scrollable */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                        {messages.map((message, i) => (
+                            <div
+                                key={i}
+                                className={`${message.role === 'user' ? 'ml-8' : 'mr-8'}`}
+                            >
+                                <div
+                                    className={`p-3 text-sm ${message.role === 'user'
+                                        ? 'bg-terminal-green/10 border-l-2 border-terminal-green'
+                                        : 'bg-black/30 border-l-2 border-terminal-dim'
+                                        }`}
+                                >
+                                    <div className="text-xs text-terminal-dim mb-1 uppercase">
+                                        {message.role === 'user' ? 'YOU' : 'HACKJUDGE_AI'}
+                                    </div>
+                                    <div className="whitespace-pre-wrap leading-relaxed">
+                                        {message.content}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+
+                        {isLoading && (
+                            <div className="mr-8">
+                                <div className="p-3 text-sm bg-black/30 border-l-2 border-terminal-dim">
+                                    <div className="text-xs text-terminal-dim mb-1">HACKJUDGE_AI</div>
+                                    <div className="animate-pulse">Analyzing...</div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Input - Fixed at bottom of panel */}
+                    <div className="p-4 border-t border-terminal-green/10">
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSendMessage();
+                                    }
+                                }}
+                                placeholder="Ask about your analysis..."
+                                className="flex-1 bg-black/30 border border-terminal-green/30 px-4 py-2 text-sm text-terminal-green placeholder:text-terminal-dim focus:outline-none focus:border-terminal-green"
+                            />
+                            <button
+                                onClick={handleSendMessage}
+                                disabled={isLoading || !input.trim()}
+                                className="px-4 py-2 bg-terminal-green text-black text-xs font-bold hover:bg-white transition-colors disabled:opacity-50"
+                            >
+                                SEND
+                            </button>
                         </div>
-                    }
-                >
-                    <CodeBlock>
-                        {result.generatedContent.devpostDraft}
-                    </CodeBlock>
-                </Modal>
-
-                {/* Pitch Script Modal */}
-                <Modal
-                    isOpen={showPitchModal}
-                    onClose={() => setShowPitchModal(false)}
-                    title="Pitch Script"
-                    size="lg"
-                    footer={
-                        <div className="flex gap-3">
-                            <Button onClick={() => navigator.clipboard.writeText(result.generatedContent.pitchScript)}>
-                                Copy All
-                            </Button>
-                            <Button variant="ghost" onClick={() => setShowPitchModal(false)}>
-                                Close
-                            </Button>
-                        </div>
-                    }
-                >
-                    <CodeBlock>
-                        {result.generatedContent.pitchScript}
-                    </CodeBlock>
-                </Modal>
-
-                {/* Footer */}
-                <div className="mt-12 text-[var(--color-text-dim)] text-xs border-t border-[var(--color-border)] pt-6">
-                    <p>
-                        Report generated at: {new Date().toISOString()}
-                    </p>
-                    <p className="mt-1">
-                        Powered by HackJudge AI • Kestra + Together AI
-                    </p>
+                    </div>
                 </div>
             </div>
+
+            {/* Footer Info */}
+            <div className="mt-6 text-xs text-terminal-dim border-t border-terminal-green/10 pt-4">
+                <span>PROJECT: {projectId}</span>
+                {result.repoUrl && (
+                    <>
+                        <span className="mx-4">|</span>
+                        <a href={result.repoUrl} target="_blank" rel="noopener noreferrer" className="hover:text-terminal-green">
+                            {result.repoUrl}
+                        </a>
+                    </>
+                )}
+            </div>
+
+            {/* Scanline effect */}
+            <div className="scanline" />
         </main>
     );
 }

@@ -86,7 +86,7 @@ export function UserMenu({ className = '' }: UserMenuProps) {
                     {/* Menu Items */}
                     <div className="py-1">
                         <a
-                            href="/dashboard"
+                            href="/"
                             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
                             onClick={() => setIsOpen(false)}
                         >
