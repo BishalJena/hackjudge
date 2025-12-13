@@ -7,7 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2025-12-13
+
+### Added
+
+#### 🔗 User-Controlled GitHub Actions
+- **[CREATE_ISSUE] Buttons**: Individual buttons on each improvement to create GitHub issues
+- **[SETUP_CI_CD] Button**: One-click CI/CD pipeline setup via PR
+- **[CREATE_ALL_X_ISSUES] Button**: Bulk issue creation for all improvements
+- **GitHub Actions Panel**: New section on report page for GitHub integrations
+
+#### 🐆 Kestra GitHub Plugin Flows
+- **create-github-issue.yml**: On-demand issue creation via `io.kestra.plugin.github.issues.Create`
+- **setup-cicd.yml**: On-demand CI/CD PR creation via `io.kestra.plugin.github.pulls.Create`
+- **API Triggers**: New endpoints trigger Kestra flows instead of direct GitHub API calls
+
+### Fixed
+
+#### 🔧 Kestra Flow Bug Fixes
+- **Missing `requests` dependency**: Added to `analyze_project` task `beforeCommands`
+- **Invalid YAML syntax**: Removed obsolete GitHub tasks with Jinja templates in boolean fields
+- **Flow revision**: Updated to revision 19 with all fixes applied
+
+#### 🎨 Report Page Improvements
+- **Repo URL Display**: Shows repository URL in report metadata
+- **Component Import Fix**: Corrected `ChatPanel` import (was `MentorUplink`)
+- **Type Safety**: Added `repoUrl` field to `EvaluationResult` interface
+
+### Changed
+- **GitHub actions are now user-initiated** instead of automatic post-evaluation
+- **Kestra-first architecture**: All GitHub operations route through Kestra for audit trail
+
+---
+
+## [2.0.0] - 2025-12-12
+
+### Added
+
+#### 🆕 Chat with Codebase
+- **AI Chat Panel**: Floating chat UI on report page to ask questions about your code
+- **Streaming Responses**: Real-time SSE streaming using OpenRouter/Gemini
+- **Code Context Extraction**: Kestra extracts up to 15 key source files for chat context
+- **Suggested Questions**: Quick-start questions for common queries
+
+#### 🔒 Security Scanning
+- **npm audit Integration**: Automatic vulnerability scanning during evaluation
+- **Security Score**: 0-100 score based on critical/high/moderate vulnerabilities
+- **Vulnerability Summary**: Counts by severity level in final report
+
+#### 🔄 CI/CD Detection
+- **GitHub Actions Detection**: Checks for `.github/workflows/` directory
+- **Docker Support**: Detects `Dockerfile` and `docker-compose.yml`
+- **Deploy Configs**: Detects Vercel, Netlify, Fly.io, Render, Railway configs
+- **CI/CD Status**: Included in evaluation dimensions
+
+#### 📋 Vision/Idea Clarity Assessment
+- **README Parsing**: Extracts Problem, Solution, Features, Vision sections
+- **Clarity Score**: Rates how well the project vision is communicated
+- **Enhanced Product Agent**: Now evaluates project vision alongside innovation
+
+#### 🔗 GitHub Integration Improvements
+- **Repository Dropdown**: After OAuth, select repos from dropdown (no URL pasting)
+- **Branch Selector**: Choose specific branches for evaluation
+- **Consolidated Landing Page**: Merged landing and dashboard into single flow
+
+#### ⚙️ Kestra Flow Sync
+- **Local Flow Synchronization**: Edit YAML files locally, auto-syncs to Kestra UI
+- **Correct Configuration**: Uses `micronaut.io.watch` with proper file naming
+- **File Naming Convention**: `main_<namespace>.<flowId>.yml` format
+
+### Changed
+- **Awards Section**: Only shows when relevant awards exist (hides for non-hackathon use)
+- **Landing Page**: Consolidated with analysis options (Security Scan, CI/CD Check toggles)
+- **Report Types**: Added `security` and `cicdStatus` to EvaluationResult interface
+
+### Fixed
+- **GitHub Token Cookie**: Fixed cookie name mismatch (`github_access_token` → `github_token`)
+- **Select Component**: Fixed onChange signature to pass value directly
+- **Toggle Component**: Removed unsupported `description` prop usage
+
+## [0.3.0] - 2025-12-10
+
+### Added
+
+#### Kestra Native AI Plugin Integration
+- **AI-Powered Summarization**: Added `ai_summarize_analysis` task using `io.kestra.plugin.openai.ChatCompletion`
+- **Analysis Data Passthrough**: AI receives all agent outputs via Kestra `read()` function
+- **Structured Decision Output**: AI returns JSON with `summary`, `submissionReady`, `topImprovements`, `eligibleTracks`
+- **Flattened Response**: Parsed AI fields accessible at top level of `aiSummary` object
+
+#### Workflow Resilience
+- **Timeout Configuration**: `timeout: PT5M` per attempt, `clientTimeout: 120` for LLM response
+- **Retry Logic**: Exponential backoff with `maxAttempt: 3`, `interval: PT10S`, `maxDuration: PT10M`
+- **JSON Validation**: Shell task validates AI summary file with `python3 -c "import json; json.load(...)"`
+
+### Fixed
+- Fixed `available` flag to only be `true` after successful validation (not on file load)
+- Replaced bare `except:` with specific exception handlers (`JSONDecodeError`, `Exception`)
+- Changed deprecated `| json` filter to correct `| toJson` filter
+
+### Technical Notes
+- Kestra workflow revision: 10+
+- All changes approved by CodeRabbit with ASSERTIVE review profile
+- PR #2 merged with 4 review iterations
+
 ## [0.2.0] - 2025-12-10
+
 
 ### Fixed
 
@@ -142,9 +247,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.1.0 | 2025-12-13 | User-controlled GitHub Actions, Kestra GitHub Plugin, Flow Bug Fixes |
+| 2.0.0 | 2025-12-12 | Chat with Codebase, Security Scan, CI/CD Detection, Vision Assessment |
+| 0.3.0 | 2025-12-10 | Kestra Native AI Plugin, workflow resilience |
 | 0.2.0 | 2025-12-10 | Fixed Kestra workflow, CodeRabbit detection, award eligibility |
 | 0.1.0 | 2025-12-09 | Initial release with full evaluation pipeline |
 
-[Unreleased]: https://github.com/BishalJena/HackJudge/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/BishalJena/HackJudge/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/BishalJena/HackJudge/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/BishalJena/HackJudge/compare/v0.3.0...v2.0.0
+[0.3.0]: https://github.com/BishalJena/HackJudge/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/BishalJena/HackJudge/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/BishalJena/HackJudge/releases/tag/v0.1.0

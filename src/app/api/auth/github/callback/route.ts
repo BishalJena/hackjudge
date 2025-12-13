@@ -24,12 +24,15 @@ export async function GET(request: NextRequest) {
     const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {
+        console.error('OAuth not configured - missing GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET');
         return NextResponse.redirect(
             new URL('/?error=oauth_not_configured', request.url)
         );
     }
 
     try {
+        console.log('OAuth callback: Exchanging code for token...');
+
         // Exchange code for access token
         const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
             method: 'POST',
@@ -45,8 +48,10 @@ export async function GET(request: NextRequest) {
         });
 
         const tokenData = await tokenResponse.json();
+        console.log('OAuth callback: Token response received', tokenData.error ? `Error: ${tokenData.error}` : 'Success');
 
         if (tokenData.error) {
+            console.error('OAuth callback error:', tokenData.error, tokenData.error_description);
             return NextResponse.redirect(
                 new URL(`/?error=${encodeURIComponent(tokenData.error)}`, request.url)
             );
@@ -58,7 +63,7 @@ export async function GET(request: NextRequest) {
         // 3. Create a session
 
         // For now, redirect to dashboard
-        const response = NextResponse.redirect(new URL('/dashboard', request.url));
+        const response = NextResponse.redirect(new URL('/', request.url));
 
         // Set token in httpOnly cookie (for demo purposes)
         response.cookies.set('github_token', tokenData.access_token, {

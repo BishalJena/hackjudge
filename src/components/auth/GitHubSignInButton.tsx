@@ -7,7 +7,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 
 interface GitHubSignInButtonProps {
-    variant?: 'default' | 'outline' | 'minimal';
+    variant?: 'default' | 'outline' | 'minimal' | 'terminal';
     size?: 'sm' | 'md' | 'lg';
     className?: string;
 }
@@ -29,6 +29,7 @@ export function GitHubSignInButton({
         default: 'bg-[#24292e] hover:bg-[#2f363d] text-white border-transparent',
         outline: 'bg-transparent hover:bg-[#24292e]/10 text-[#24292e] border-[#24292e] dark:text-white dark:border-white dark:hover:bg-white/10',
         minimal: 'bg-transparent hover:bg-gray-100 text-gray-700 border-transparent dark:text-gray-300 dark:hover:bg-gray-800',
+        terminal: 'bg-transparent text-[#00ff41] border-[#00ff41] hover:bg-[#00ff41]/15 hover:shadow-[0_0_15px_rgba(0,255,65,0.4)]',
     };
 
     return (

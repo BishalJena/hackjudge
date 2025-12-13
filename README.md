@@ -53,6 +53,7 @@ A **Meta-Judge** synthesizes all agent outputs into a cohesive report with:
 - 📊 **Readiness Score** (0-100)
 - 🎯 **Dimension Breakdown** (radar chart)
 - ✅ **Prioritized Improvements** (ranked by impact vs. effort)
+- 🔗 **GitHub Actions** — Create issues & CI/CD PRs directly from the report
 - 🏆 **Award Eligibility** analysis
 - 📄 **Auto-generated DevPost draft** and **60-second pitch script**
 
@@ -60,19 +61,37 @@ A **Meta-Judge** synthesizes all agent outputs into a cohesive report with:
 
 ## ✨ Key Features
 
+### 💬 Chat with Codebase (v2.0)
+Ask questions about your code and get AI-powered suggestions:
+- Floating chat panel on report page
+- Context-aware responses using extracted code snippets
+- Streaming responses for real-time feedback
+
+### 🔒 Security Scanning (v2.0)
+Automatic vulnerability detection:
+- **npm audit** integration
+- Security score (0-100) based on vulnerability severity
+- Counts: critical, high, moderate, low vulnerabilities
+
+### 🔄 CI/CD Detection (v2.0)
+Evaluate deployment readiness:
+- GitHub Actions, GitLab CI, Jenkins detection
+- Docker/docker-compose configuration
+- Deploy configs (Vercel, Netlify, Fly.io, Render)
+
 ### Multi-Agent AI Analysis
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    EVALUATION PIPELINE                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   GitHub Repo ──▶ Clone ──▶ Build ──▶ Analyze ──▶ Report       │
-│                     │         │         │           │           │
-│                     ▼         ▼         ▼           ▼           │
-│               Metadata   Screenshots  Lighthouse  6 AI Agents   │
-│               Extracted  Captured     Audit Run   in Parallel   │
+│   GitHub Repo ──▶ Clone ──▶ Analyze ──▶ AI Agents ──▶ Report   │
+│                     │         │            │             │      │
+│                     ▼         ▼            ▼             ▼      │
+│               Security    CI/CD       6 Specialized   Chat     │
+│               Scan        Check       Agents          Context  │
 │                                                                 │
-│   Final Output: Comprehensive Judge Report + DevPost Draft      │
+│   Final Output: Comprehensive Report + Chat with Codebase       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -93,7 +112,7 @@ Watch your evaluation progress in real-time with Server-Sent Events (SSE):
 │ UX & Design:       81/100 [████████░░░░░░░░]   │
 │ Performance:       62/100 [██████░░░░░░░░░░]   │
 │ Code Quality:      87/100 [█████████░░░░░░░]   │
-│ Presentation:      76/100 [███████░░░░░░░░░]   │
+│ Security:          95/100 [██████████░░░░░░]   │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -108,11 +127,18 @@ Watch your evaluation progress in real-time with Server-Sent Events (SSE):
 
 ### Prerequisites
 
-- **Node.js** 18.17+ 
-- **npm** 9+
-- **Docker** (for Kestra orchestration)
+| Requirement | Version | Required For |
+|-------------|---------|--------------|
+| **Node.js** | 18.17+ | Frontend & API |
+| **npm** | 9+ | Package management |
+| **Docker** | 20+ | Kestra orchestration (optional) |
+| **Docker Compose** | 2.0+ | Kestra + PostgreSQL (optional) |
 
-### Installation
+> **Note:** Docker is optional. Without Kestra, the app runs in **LLM Fallback Mode** which uses direct AI calls instead of the full workflow pipeline.
+
+---
+
+### Step 1: Clone & Install
 
 ```bash
 # Clone the repository
@@ -121,46 +147,123 @@ cd HackJudge
 
 # Install dependencies
 npm install
-
-# Copy environment variables
-cp .env.example .env
-
-# Start development server
-npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+---
 
-### Environment Variables
-
-Create a `.env` file with the following:
+### Step 2: Configure Environment Variables
 
 ```bash
-# GitHub OAuth (for repository access)
+# Copy the example env file
+cp .env.example .env
+```
+
+Edit `.env` with your credentials:
+
+```bash
+# ========== REQUIRED ==========
+
+# GitHub OAuth App (create at https://github.com/settings/developers)
 GITHUB_CLIENT_ID=your_github_client_id
 GITHUB_CLIENT_SECRET=your_github_client_secret
+GITHUB_REDIRECT_URI=http://localhost:3000/api/auth/github/callback
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# Together AI (powers the AI agents)
-TOGETHER_API_KEY=your_together_api_key
+# AI Provider (get key at https://api.together.xyz or https://openrouter.ai)
+OPENAI_API_KEY=your_together_or_openrouter_api_key
 
-# Kestra (workflow orchestration)
+# ========== OPTIONAL (for Kestra mode) ==========
+
+# Kestra API endpoint
 KESTRA_API_URL=http://localhost:8080/api/v1
-
-# Optional: OpenAI as fallback
-OPENAI_API_KEY=your_openai_api_key
 ```
 
-### Running with Kestra (Full Pipeline)
+#### Creating a GitHub OAuth App
+
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+2. Click **New OAuth App**
+3. Fill in:
+   - **Application name:** `HackJudge AI (Local)`
+   - **Homepage URL:** `http://localhost:3000`
+   - **Authorization callback URL:** `http://localhost:3000/api/auth/github/callback`
+4. Copy **Client ID** and generate a new **Client Secret**
+
+---
+
+### Step 3: Run the Application
+
+#### Option A: Full Kestra Mode (Recommended)
+
+For the complete 6-step evaluation pipeline with security scanning:
 
 ```bash
-# Start Kestra (workflow engine)
+# Terminal 1: Start Kestra (Docker required)
 cd kestra
 docker-compose up -d
 
-# Kestra UI available at http://localhost:8080
+# Wait for Kestra to be ready (check http://localhost:8080)
+# Then deploy the workflow
+docker exec -i kestra-kestra-1 kestra flow namespace update hackjudge flows/
+
+# Terminal 2: Start the Next.js app
+cd ..
+npm run dev
 ```
 
-See [`kestra/README.md`](kestra/README.md) for detailed Kestra setup instructions.
+**Kestra Dashboard:** [http://localhost:8080](http://localhost:8080)
+
+#### Option B: LLM Fallback Mode (No Docker)
+
+If you don't have Docker or just want to run quickly:
+
+```bash
+npm run dev
+```
+
+This runs a 4-step AI evaluation using direct LLM calls (no security scanning).
+
+---
+
+### Step 4: Open the App
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+1. Click **Sign in with GitHub**
+2. Select a repository from your account
+3. Click **EXECUTE** to start evaluation
+4. View real-time progress and final report
+
+---
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `Kestra not available, using mock mode` | Normal if Docker/Kestra isn't running - uses LLM fallback |
+| `ECONNREFUSED` on port 8080/8081 | Start Kestra: `cd kestra && docker-compose up -d` |
+| GitHub OAuth fails | Check callback URL matches exactly in GitHub settings |
+| `401` on `/api/github/repos` | Sign in with GitHub first |
+| Infinite 401 requests | Clear cookies for localhost:3000 and refresh |
+
+---
+
+### Docker Commands Reference
+
+```bash
+# Start Kestra
+cd kestra && docker-compose up -d
+
+# View Kestra logs
+docker-compose logs -f kestra
+
+# Stop Kestra
+docker-compose down
+
+# Reset Kestra (remove all data)
+docker-compose down -v
+```
+
+See [`kestra/README.md`](kestra/README.md) for detailed Kestra configuration.
 
 ---
 
@@ -172,38 +275,31 @@ hackjudge/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/               # API Routes
 │   │   │   ├── auth/          # GitHub OAuth endpoints
+│   │   │   ├── chat/          # 💬 Chat with Codebase API (v2.0)
 │   │   │   ├── evaluate/      # Evaluation trigger & status
-│   │   │   ├── projects/      # Project history
-│   │   │   └── repos/         # GitHub repo listing
+│   │   │   ├── github/        # 🔗 Repos & branches APIs (v2.0)
+│   │   │   └── kestra/        # Kestra callback endpoint
 │   │   ├── dashboard/         # Evaluation dashboard page
 │   │   └── report/[projectId] # Evaluation report page
 │   │
 │   ├── components/            # React Components
+│   │   ├── ChatPanel.tsx      # 💬 Floating chat panel (v2.0)
 │   │   └── ui/                # Reusable UI components
-│   │       ├── Button.tsx
-│   │       ├── Input.tsx
-│   │       ├── Modal.tsx
-│   │       ├── ProgressBar.tsx
-│   │       └── RadarChart.tsx
-│   │
-│   ├── hooks/                 # Custom React Hooks
-│   │   ├── useEvaluation.ts   # Evaluation state management
-│   │   └── useSSE.ts          # Server-Sent Events hook
 │   │
 │   ├── lib/                   # Core Utilities
 │   │   ├── evaluation.ts      # Evaluation orchestration
-│   │   ├── llm.ts             # LLM client (Together AI/OpenAI)
-│   │   ├── prompts.ts         # Agent prompt templates
-│   │   ├── kestra.ts          # Kestra API integration
+│   │   ├── llm.ts             # LLM client (OpenRouter/Together AI)
+│   │   ├── kestra.ts          # Kestra API + report transform
+│   │   ├── store.ts           # In-memory evaluation store
 │   │   └── github.ts          # GitHub API utilities
 │   │
 │   └── types/                 # TypeScript Definitions
-│       └── index.ts           # All type interfaces
+│       └── index.ts           # All type interfaces (incl. security, cicd)
 │
 ├── kestra/                    # Kestra Workflow Definitions
 │   ├── docker-compose.yml     # Kestra + PostgreSQL setup
 │   ├── flows/
-│   │   └── evaluate-hackathon-project.yaml  # Main evaluation flow
+│   │   └── main_hackjudge.evaluate-hackathon-project.yml  # Main flow
 │   └── README.md              # Kestra setup guide
 │
 ├── .github/                   # GitHub Configuration
@@ -280,11 +376,15 @@ The Meta-Judge uses these weights to calculate the final readiness score:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/auth/github` | GET | GitHub OAuth redirect |
-| `/api/repos` | GET | List user's GitHub repositories |
+| `/api/github/repos` | GET | List user's GitHub repositories (v2.0) |
+| `/api/github/branches` | GET | List branches for a repository (v2.0) |
+| `/api/github/create-issue` | POST | 🔗 Create GitHub issue for improvement (v2.1) |
+| `/api/github/setup-cicd` | POST | 🔗 Create CI/CD PR via Kestra (v2.1) |
 | `/api/evaluate` | POST | Start new evaluation |
 | `/api/evaluate/[id]/status` | GET | Poll evaluation progress |
 | `/api/evaluate/[id]/stream` | GET | SSE real-time progress stream |
 | `/api/evaluate/[id]/report` | GET | Fetch completed evaluation report |
+| `/api/chat` | POST | 💬 Chat with codebase (v2.0) |
 
 ### Example: Trigger Evaluation
 

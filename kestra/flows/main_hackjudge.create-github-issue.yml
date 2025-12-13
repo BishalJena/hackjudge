@@ -1,0 +1,65 @@
+# Kestra Flow: Create GitHub Issue (On-Demand)
+# Triggered by user action from HackJudge Report page
+
+id: create-github-issue
+namespace: hackjudge
+
+description: |
+  Creates a GitHub issue with evaluation feedback.
+  Triggered on-demand by user from the Report page.
+
+labels:
+  project: hackjudge
+  type: github-action
+  trigger: user-initiated
+
+inputs:
+  - id: owner
+    type: STRING
+    description: GitHub repository owner
+  - id: repo
+    type: STRING
+    description: GitHub repository name
+  - id: title
+    type: STRING
+    description: Issue title
+  - id: body
+    type: STRING
+    description: Issue body (markdown)
+  - id: labels
+    type: STRING
+    defaults: "hackjudge,improvement"
+    description: Comma-separated labels
+
+tasks:
+  - id: create_issue
+    type: io.kestra.plugin.github.issues.Create
+    description: Create GitHub issue using Kestra's GitHub plugin
+    oauthToken: "{{ secret('GITHUB_TOKEN') }}"
+    repository: "{{ inputs.owner }}/{{ inputs.repo }}"
+    title: "{{ inputs.title }}"
+    body: |
+      {{ inputs.body }}
+      
+      ---
+      _Created via [HackJudge AI](https://github.com/BishalJena/HackJudge) using Kestra GitHub Plugin 🤖_
+    labels: "{{ inputs.labels.split(',') }}"
+
+outputs:
+  - id: issue_url
+    type: STRING
+    value: "{{ outputs.create_issue.htmlUrl }}"
+  - id: issue_number
+    type: INTEGER
+    value: "{{ outputs.create_issue.number }}"
+
+triggers:
+  - id: api_trigger
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: create-issue
+
+errors:
+  - id: handle_failure
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - echo "Failed to create issue for {{ inputs.owner }}/{{ inputs.repo }}"

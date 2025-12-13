@@ -1,21 +1,8 @@
-/**
- * Dashboard Client Component
- * Repo selection, hackathon context, settings, and evaluation trigger
- */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import {
-    Button,
-    Input,
-    Select,
-    Toggle,
-    TerminalCard,
-    StepProgress,
-    LoadingBar,
-} from '@/components/ui';
+import { TypeShuffle } from '@/components/ui';
 
 interface EvaluationStep {
     id: string;
@@ -24,40 +11,22 @@ interface EvaluationStep {
 }
 
 const INITIAL_STEPS: EvaluationStep[] = [
-    { id: 'clone', name: 'Clone Repository', status: 'pending' },
-    { id: 'metadata', name: 'Extract Metadata', status: 'pending' },
-    { id: 'build', name: 'Building Project', status: 'pending' },
-    { id: 'lighthouse', name: 'Running Lighthouse', status: 'pending' },
-    { id: 'screenshots', name: 'Capturing Screenshots', status: 'pending' },
-    { id: 'agents', name: 'Multi-Agent Analysis', status: 'pending' },
-    { id: 'report', name: 'Generating Report', status: 'pending' },
-];
-
-const BRANCH_OPTIONS = [
-    { value: 'main', label: 'main' },
-    { value: 'master', label: 'master' },
-    { value: 'develop', label: 'develop' },
-];
-
-const BUILD_TYPE_OPTIONS = [
-    { value: 'full', label: 'Full (recommended)' },
-    { value: 'quick', label: 'Quick (skip some checks)' },
-];
-
-const TIMEOUT_OPTIONS = [
-    { value: '3', label: '3 minutes' },
-    { value: '5', label: '5 minutes' },
-    { value: '10', label: '10 minutes' },
+    { id: 'setup', name: 'FETCHING_REPO', status: 'pending' },
+    { id: 'metadata', name: 'EXTRACTING_METADATA', status: 'pending' },
+    { id: 'analyze', name: 'RUNNING_AI_ANALYSIS', status: 'pending' },
+    { id: 'report', name: 'GENERATING_REPORT', status: 'pending' },
 ];
 
 export function DashboardClient() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const logEndRef = useRef<HTMLDivElement>(null);
+    const lastLogCountRef = useRef(0); // Track how many logs we've received to avoid duplicates
 
     // Form state
     const [repoUrl, setRepoUrl] = useState(searchParams.get('repo') || '');
-    const [hackathonUrl, setHackathonUrl] = useState('');
-    const [branch, setBranch] = useState('main');
+    const [hackathonUrl, setHackathonUrl] = useState(searchParams.get('hackathon') || '');
+    const [branch, setBranch] = useState(searchParams.get('branch') || 'main');
     const [buildType, setBuildType] = useState('full');
     const [timeout, setTimeout] = useState('5');
     const [skipLighthouse, setSkipLighthouse] = useState(false);
@@ -71,6 +40,12 @@ export function DashboardClient() {
     const [elapsedTime, setElapsedTime] = useState(0);
     const [error, setError] = useState('');
     const [jobId, setJobId] = useState<string | null>(null);
+    const [executionId, setExecutionId] = useState<string | null>(null);
+
+    // Auto-scroll logs
+    useEffect(() => {
+        logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [logs]);
 
     // Timer for elapsed time
     useEffect(() => {
@@ -83,53 +58,70 @@ export function DashboardClient() {
         return () => clearInterval(interval);
     }, [isEvaluating]);
 
-    // Simulate evaluation progress (replace with real SSE/WebSocket for Kestra progress)
+    // Real SSE streaming for evaluation progress
     useEffect(() => {
         if (!isEvaluating || !jobId) return;
 
-        const simulateProgress = async () => {
-            for (let i = 0; i < INITIAL_STEPS.length; i++) {
-                // Mark current step as running
-                setSteps((prev) =>
-                    prev.map((step, idx) =>
-                        idx === i ? { ...step, status: 'running' } : step
-                    )
-                );
-                setCurrentStep(i);
-                setLogs((prev) => [...prev, `> Starting: ${INITIAL_STEPS[i].name}...`]);
+        const url = new URL(`/api/evaluate/${jobId}/stream`, window.location.origin);
+        url.searchParams.set('repoUrl', repoUrl);
+        url.searchParams.set('branch', branch);
+        if (executionId) {
+            url.searchParams.set('executionId', executionId);
+        }
 
-                // Simulate step duration (TODO: replace with real SSE from /api/evaluate/[jobId]/progress)
-                await new Promise((resolve) =>
-                    window.setTimeout(resolve, 1500 + Math.random() * 1000)
-                );
+        const eventSource = new EventSource(url.toString());
 
-                // Mark step as complete
-                setSteps((prev) =>
-                    prev.map((step, idx) =>
-                        idx === i ? { ...step, status: 'complete' } : step
-                    )
-                );
-                setLogs((prev) => [...prev, `✓ Completed: ${INITIAL_STEPS[i].name}`]);
+        eventSource.addEventListener('connected', (event) => {
+            const data = JSON.parse(event.data);
+            setLogs((prev) => [...prev, `> CONNECTION_ESTABLISHED [MODE: ${data.mode || 'LLM'}]`]);
+        });
+
+        eventSource.addEventListener('progress', (event) => {
+            const data = JSON.parse(event.data);
+            if (data.steps) setSteps(data.steps);
+            if (typeof data.currentStep === 'number') setCurrentStep(data.currentStep);
+            // Fix: Only append NEW logs (logs after lastLogCount)
+            if (data.logs && Array.isArray(data.logs)) {
+                const newLogs = data.logs.slice(lastLogCountRef.current);
+                if (newLogs.length > 0) {
+                    setLogs((prev) => [...prev, ...newLogs.map((l: string) => `> ${l}`)]);
+                    lastLogCountRef.current = data.logs.length;
+                }
             }
+        });
 
-            // Navigate to report page with real job ID
-            setLogs((prev) => [...prev, '> Evaluation complete! Redirecting...']);
-            await new Promise((resolve) => window.setTimeout(resolve, 1000));
-            router.push(`/report/${jobId}`);
-        };
+        eventSource.addEventListener('complete', (event) => {
+            const data = JSON.parse(event.data);
+            setLogs((prev) => [...prev, '✓ SEQUENCE_COMPLETE', '> REDIRECTING_TO_REPORT...']);
+            window.setTimeout(() => {
+                router.push(`/report/${data.projectId || jobId}`);
+            }, 1000);
+        });
 
-        simulateProgress();
-    }, [isEvaluating, jobId, router]);
+        eventSource.addEventListener('error', (event: Event) => {
+            if (event instanceof MessageEvent && event.data) {
+                const data = JSON.parse(event.data);
+                setError(data.message || 'FATAL_ERROR');
+                setLogs((prev) => [...prev, `✗ ERROR: ${data.message || 'FATAL_ERROR'}`]);
+            } else {
+                setError('CONNECTION_LOST');
+                setLogs((prev) => [...prev, '✗ CONNECTION_LOST - Click retry to reconnect']);
+            }
+            // Don't set isEvaluating to false for CONNECTION_LOST - allow retry
+        });
+
+        return () => eventSource.close();
+    }, [isEvaluating, jobId, repoUrl, branch, executionId, router]);
 
     const formatTime = (seconds: number): string => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     const handleStartEvaluation = async () => {
         if (!repoUrl.trim()) {
-            setError('Repository URL is required');
+            setError('REPO_URL_REQUIRED');
             return;
         }
 
@@ -137,11 +129,10 @@ export function DashboardClient() {
         setIsEvaluating(true);
         setSteps(INITIAL_STEPS);
         setCurrentStep(0);
-        setLogs(['> Initializing evaluation...']);
+        setLogs(['> INITIALIZING_SYSTEM...', '> ALLOCATING_RESOURCES...']);
         setElapsedTime(0);
 
         try {
-            // Call the real API
             const response = await fetch('/api/evaluate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -161,195 +152,213 @@ export function DashboardClient() {
             const data = await response.json();
 
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to start evaluation');
+                throw new Error(data.error || 'INIT_FAILED');
             }
 
             setJobId(data.data.jobId);
+            if (data.data.executionId) setExecutionId(data.data.executionId);
+
             setLogs((prev) => [
                 ...prev,
-                `> Job created: ${data.data.jobId}`,
-                `> Mode: ${data.data.mode}`,
-                data.data.executionId ? `> Kestra execution: ${data.data.executionId}` : '> Running in mock mode',
+                `> JOB_ID: ${data.data.jobId}`,
+                `> EXEC_MODE: ${data.data.mode}`,
+                data.data.executionId ? `> KESTRA_ID: ${data.data.executionId}` : '> LOCAL_LLM_FALLBACK',
             ]);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to start evaluation');
+            setError(err instanceof Error ? err.message : 'INIT_FAILED');
             setIsEvaluating(false);
         }
     };
 
-    // Evaluation Progress View
-    if (isEvaluating) {
-        return (
-            <main className="min-h-screen p-4 md:p-8">
-                <div className="max-w-4xl mx-auto">
-                    <h1 className="text-2xl font-bold mb-2">
-                        <span className="text-[var(--color-text-secondary)]">&gt;</span> Evaluation in Progress...
-                    </h1>
-                    <div className="text-[var(--color-border)] font-mono text-sm mb-8 overflow-hidden">
-                        ════════════════════════════════════════════════════════
-                    </div>
+    return (
+        <main className="min-h-screen bg-terminal-black text-terminal-green font-mono p-4 md:p-8 selection:bg-terminal-green selection:text-black flex flex-col">
+            {/* Top Status Bar */}
+            <div className="border-b border-terminal-green/30 pb-2 mb-6 flex justify-between items-end uppercase text-xs">
+                <div className="flex gap-6">
+                    <span>STATUS: {isEvaluating ? 'RUNNING' : 'IDLE'}</span>
+                    <span>CPU: {isEvaluating ? 45 : 5}%</span>
+                    <span>MEM: {isEvaluating ? '4.2GB' : '1.1GB'}</span>
+                </div>
+                <div>
+                    TIME: {formatTime(elapsedTime)}
+                </div>
+            </div>
 
-                    {/* Progress Steps */}
-                    <TerminalCard className="mb-6">
-                        <StepProgress steps={steps} currentStep={currentStep} />
-                    </TerminalCard>
-
-                    {/* Progress Metadata */}
-                    <div className="flex flex-wrap gap-6 mb-6 text-sm">
-                        <div>
-                            <span className="text-[var(--color-text-dim)]">Current step:</span>{' '}
-                            <span className="text-[var(--color-text-primary)]">
-                                {INITIAL_STEPS[currentStep]?.name} ({currentStep + 1} of {INITIAL_STEPS.length})
-                            </span>
+            {isEvaluating ? (
+                /* Evaluation View (Split Pane) */
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+                    {/* Left Pane: Progress Steps */}
+                    <div className="lg:col-span-4 border border-terminal-green/30 p-4 flex flex-col h-[600px]">
+                        <div className="text-xs text-terminal-dim mb-4 border-b border-terminal-green/10 pb-2">
+                            SEQUENCE_PROGRESS
                         </div>
-                        <div>
-                            <span className="text-[var(--color-text-dim)]">Elapsed:</span>{' '}
-                            <span className="text-[var(--color-text-primary)]">{formatTime(elapsedTime)}</span>
-                            <span className="text-[var(--color-text-dim)]"> | Estimated: 5m</span>
+                        <div className="space-y-3 flex-1 overflow-y-auto">
+                            {steps.map((step, index) => {
+                                const isActive = index === currentStep;
+                                const isComplete = index < currentStep;
+                                const isPending = index > currentStep;
+
+                                return (
+                                    <div key={step.id} className={`flex items-center gap-3 text-sm ${isActive ? 'text-white' : isComplete ? 'text-terminal-green' : 'text-terminal-dim'}`}>
+                                        <span className="font-bold w-6">
+                                            {isActive ? '>' : isComplete ? '✓' : '[ ]'}
+                                        </span>
+                                        <span className={isActive ? 'animate-pulse' : ''}>
+                                            {step.name}
+                                        </span>
+                                        {isActive && <span className="ml-auto text-xs animate-spin">|</span>}
+                                    </div>
+                                );
+                            })}
                         </div>
-                    </div>
 
-                    {/* Overall Progress */}
-                    <div className="mb-6">
-                        <LoadingBar
-                            progress={((currentStep + 1) / INITIAL_STEPS.length) * 100}
-                        />
-                    </div>
-
-                    {/* Live Logs */}
-                    <TerminalCard title="Live Logs">
-                        <div className="h-48 overflow-y-auto font-mono text-sm">
-                            {logs.map((log, index) => (
+                        {/* Progress Bar */}
+                        <div className="mt-6">
+                            <div className="text-xs text-terminal-dim mb-1 flex justify-between">
+                                <span>COMPLETION</span>
+                                <span>{Math.round(((currentStep) / steps.length) * 100)}%</span>
+                            </div>
+                            <div className="h-2 bg-terminal-dim/20 w-full">
                                 <div
-                                    key={index}
-                                    className={`py-0.5 ${log.startsWith('✓')
-                                        ? 'text-[var(--color-accent-success)]'
-                                        : log.startsWith('✗')
-                                            ? 'text-[var(--color-accent-error)]'
-                                            : 'text-[var(--color-text-secondary)]'
-                                        }`}
-                                >
+                                    className="h-full bg-terminal-green transition-all duration-500 ease-out"
+                                    style={{ width: `${((currentStep) / steps.length) * 100}%` }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Pane: Logs */}
+                    <div className="lg:col-span-8 border border-terminal-green/30 p-4 flex flex-col bg-black/50 h-[600px]">
+                        <div className="text-xs text-terminal-dim mb-2 border-b border-terminal-green/10 pb-2 flex justify-between">
+                            <span>SYSTEM_LOGS</span>
+                            <span>/var/log/hackjudge.log</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto font-mono text-sm space-y-1 scrollbar-hide">
+                            {logs.map((log, i) => (
+                                <div key={i} className="break-all opacity-90 hover:opacity-100">
                                     {log}
                                 </div>
                             ))}
-                            <div className="text-[var(--color-text-primary)] animate-pulse">
-                                █
+                            <div ref={logEndRef} />
+                            {isEvaluating && !error && (
+                                <div className="animate-pulse text-terminal-green">_</div>
+                            )}
+                        </div>
+                        {/* Error Banner with Retry */}
+                        {error && (
+                            <div className="mt-4 p-3 border border-red-500/50 bg-red-500/10 flex items-center justify-between">
+                                <div className="text-red-400 text-sm font-mono">
+                                    ⚠ {error}
+                                </div>
+                                {error === 'CONNECTION_LOST' && (
+                                    <button
+                                        onClick={() => {
+                                            setError('');
+                                            setLogs((prev) => [...prev, '> RETRYING_CONNECTION...']);
+                                            // Force re-trigger SSE by updating jobId timestamp
+                                            setJobId((prev) => prev);
+                                        }}
+                                        className="text-red-400 border border-red-400 px-3 py-1 text-xs hover:bg-red-400/20 transition-colors font-mono"
+                                    >
+                                        RETRY
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* Configuration View */
+                <div className="max-w-3xl mx-auto w-full pt-12">
+                    <div className="mb-8">
+                        <h1 className="text-2xl font-bold mb-2">
+                            <TypeShuffle text="INITIATE_EVALUATION_SEQUENCE" delay={0} />
+                        </h1>
+                        <div className="h-px bg-terminal-green/30 w-full" />
+                    </div>
+
+                    <div className="space-y-6">
+                        {/* Target */}
+                        <div className="group">
+                            <label className="block text-xs text-terminal-dim mb-1 group-hover:text-terminal-green transition-colors">TARGET_REPOSITORY</label>
+                            <input
+                                type="text"
+                                value={repoUrl}
+                                onChange={(e) => setRepoUrl(e.target.value)}
+                                className="w-full bg-transparent border-b border-terminal-dim focus:border-terminal-green outline-none py-2 font-mono text-sm transition-colors"
+                                placeholder="https://github.com/..."
+                            />
+                        </div>
+
+                        {/* Params Grid */}
+                        <div className="grid grid-cols-2 gap-8">
+                            <div className="group">
+                                <label className="block text-xs text-terminal-dim mb-1 group-hover:text-terminal-green transition-colors">TARGET_BRANCH</label>
+                                <input
+                                    type="text"
+                                    value={branch}
+                                    onChange={(e) => setBranch(e.target.value)}
+                                    className="w-full bg-transparent border-b border-terminal-dim focus:border-terminal-green outline-none py-2 font-mono text-sm transition-colors"
+                                />
+                            </div>
+                            <div className="group">
+                                <label className="block text-xs text-terminal-dim mb-1 group-hover:text-terminal-green transition-colors">TIMEOUT_MINS</label>
+                                <select
+                                    value={timeout}
+                                    onChange={(e) => setTimeout(e.target.value)}
+                                    className="w-full bg-transparent border-b border-terminal-dim focus:border-terminal-green outline-none py-2 font-mono text-sm transition-colors appearance-none rounded-none"
+                                >
+                                    <option value="3" className="bg-black">3</option>
+                                    <option value="5" className="bg-black">5</option>
+                                    <option value="10" className="bg-black">10</option>
+                                </select>
                             </div>
                         </div>
-                    </TerminalCard>
-                </div>
-            </main>
-        );
-    }
 
-    // Dashboard Form View
-    return (
-        <main className="min-h-screen p-4 md:p-8">
-            <div className="max-w-4xl mx-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-2">
-                    <h1 className="text-2xl font-bold">
-                        <span className="text-[var(--color-text-secondary)]">&gt;</span> HackJudge Dashboard
-                    </h1>
-                    <Link
-                        href="/"
-                        className="text-[var(--color-text-dim)] text-sm hover:text-[var(--color-text-primary)]"
-                    >
-                        [Back to Home]
-                    </Link>
-                </div>
-                <div className="text-[var(--color-border)] font-mono text-sm mb-8 overflow-hidden">
-                    ════════════════════════════════════════════════════════
-                </div>
+                        {/* Toggles */}
+                        <div className="flex gap-8 pt-4">
+                            <button
+                                onClick={() => setSkipLighthouse(!skipLighthouse)}
+                                className="flex items-center gap-2 text-sm group"
+                            >
+                                <span className={skipLighthouse ? 'text-terminal-dim' : 'text-terminal-green'}>
+                                    {!skipLighthouse ? '[x]' : '[ ]'}
+                                </span>
+                                <span className="text-terminal-dim group-hover:text-white transition-colors">ENABLE_LIGHTHOUSE</span>
+                            </button>
+                            <button
+                                onClick={() => setSkipScreenshots(!skipScreenshots)}
+                                className="flex items-center gap-2 text-sm group"
+                            >
+                                <span className={skipScreenshots ? 'text-terminal-dim' : 'text-terminal-green'}>
+                                    {!skipScreenshots ? '[x]' : '[ ]'}
+                                </span>
+                                <span className="text-terminal-dim group-hover:text-white transition-colors">ENABLE_SCREENSHOTS</span>
+                            </button>
+                        </div>
 
-                {/* Project Source */}
-                <TerminalCard title="Project Source" className="mb-6">
-                    <div className="space-y-4">
-                        <p className="text-[var(--color-text-secondary)] text-sm mb-4">
-                            <span className="text-[var(--color-text-primary)]">&gt;</span> Select your repo (if authenticated) or paste GitHub URL:
-                        </p>
+                        {/* Error */}
+                        {error && (
+                            <div className="text-red-500 text-sm py-4 animate-pulse">
+                                ERROR: {error}
+                            </div>
+                        )}
 
-                        <Input
-                            label="GitHub Repository URL"
-                            placeholder="https://github.com/owner/repo"
-                            value={repoUrl}
-                            onChange={(e) => setRepoUrl(e.target.value)}
-                            error={error}
-                            hint="Public repositories only. Private repos require GitHub authentication."
-                        />
+                        {/* Action */}
+                        <div className="pt-8">
+                            <button
+                                onClick={handleStartEvaluation}
+                                className="border border-terminal-green text-terminal-green px-8 py-3 font-bold text-sm uppercase hover:bg-terminal-green/15 hover:shadow-[0_0_20px_rgba(0,255,65,0.4)] hover:text-white active:bg-terminal-green active:text-black transition-all w-full md:w-auto font-mono"
+                            >
+                                &gt; CONFIRM_AND_EXECUTE
+                            </button>
+                        </div>
                     </div>
-                </TerminalCard>
-
-                {/* Hackathon Context */}
-                <TerminalCard title="Hackathon Context (optional)" className="mb-6">
-                    <Input
-                        label="Hackathon page / rubric URL"
-                        placeholder="https://devpost.com/hackathons/your-hackathon"
-                        value={hackathonUrl}
-                        onChange={(e) => setHackathonUrl(e.target.value)}
-                        hint="Helps us extract judging criteria for more relevant feedback"
-                    />
-                </TerminalCard>
-
-                {/* Settings */}
-                <TerminalCard title="Settings (optional)" className="mb-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Select
-                            label="Branch"
-                            options={BRANCH_OPTIONS}
-                            value={branch}
-                            onChange={setBranch}
-                        />
-                        <Select
-                            label="Build Type"
-                            options={BUILD_TYPE_OPTIONS}
-                            value={buildType}
-                            onChange={setBuildType}
-                        />
-                        <Select
-                            label="Timeout"
-                            options={TIMEOUT_OPTIONS}
-                            value={timeout}
-                            onChange={setTimeout}
-                        />
-                    </div>
-
-                    <div className="flex flex-wrap gap-6 mt-6">
-                        <Toggle
-                            checked={skipLighthouse}
-                            onChange={setSkipLighthouse}
-                            label="Skip Lighthouse audit"
-                        />
-                        <Toggle
-                            checked={skipScreenshots}
-                            onChange={setSkipScreenshots}
-                            label="Skip screenshots"
-                        />
-                    </div>
-                </TerminalCard>
-
-                {/* Start Button */}
-                <div className="mt-8">
-                    <Button
-                        variant="success"
-                        size="lg"
-                        className="w-full md:w-auto"
-                        onClick={handleStartEvaluation}
-                    >
-                        Start Evaluation
-                    </Button>
                 </div>
+            )}
 
-                {/* Footer */}
-                <div className="mt-12 text-[var(--color-text-dim)] text-xs border-t border-[var(--color-border)] pt-6">
-                    <p>
-                        <span className="text-[var(--color-text-secondary)]">Note:</span> Evaluation typically takes 3-5 minutes depending on project size.
-                    </p>
-                    <p className="mt-1">
-                        The AI will analyze code quality, UX, performance, and more.
-                    </p>
-                </div>
-            </div>
+            {/* Scanline */}
+            <div className="scanline" />
         </main>
     );
 }

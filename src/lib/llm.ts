@@ -138,6 +138,20 @@ export function createLLMClient(config: LLMConfig) {
 }
 
 /**
+ * Check if an API key is a valid key (not a placeholder)
+ */
+function isValidApiKey(key: string | undefined): key is string {
+    if (!key) return false;
+    // Skip placeholder values like "your_together_ai_key", "your_api_key", etc.
+    if (key.startsWith('your_') || key.includes('your_')) return false;
+    // Skip empty or whitespace-only keys
+    if (key.trim().length === 0) return false;
+    // Skip obvious placeholder patterns
+    if (key.toLowerCase().includes('placeholder') || key.toLowerCase().includes('example')) return false;
+    return true;
+}
+
+/**
  * Get default LLM client from environment variables
  * Priority: Together AI → OpenRouter → OpenAI
  */
@@ -147,7 +161,7 @@ export function getDefaultLLMClient() {
     const openaiKey = process.env.OPENAI_API_KEY;
 
     // Priority: Together AI first (sponsor tool)
-    if (togetherKey) {
+    if (isValidApiKey(togetherKey)) {
         return createLLMClient({
             provider: 'together',
             apiKey: togetherKey,
@@ -155,7 +169,7 @@ export function getDefaultLLMClient() {
     }
 
     // Fallback: OpenRouter
-    if (openrouterKey) {
+    if (isValidApiKey(openrouterKey)) {
         return createLLMClient({
             provider: 'openrouter',
             apiKey: openrouterKey,
@@ -163,7 +177,7 @@ export function getDefaultLLMClient() {
     }
 
     // Fallback: OpenAI
-    if (openaiKey) {
+    if (isValidApiKey(openaiKey)) {
         return createLLMClient({
             provider: 'openai',
             apiKey: openaiKey,

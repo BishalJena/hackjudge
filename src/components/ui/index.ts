@@ -17,3 +17,8 @@ export { Select, Toggle } from './Select';
 // Layout
 export { Separator, SectionHeader, CodeBlock, BulletList } from './Separator';
 export { Modal, ConfirmModal } from './Modal';
+
+// Animation
+export { TypeShuffle } from './TypeShuffle';
+export { AsciiArt } from './AsciiArt';
+

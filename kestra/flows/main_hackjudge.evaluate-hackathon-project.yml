@@ -1,0 +1,1088 @@
+# Kestra Workflow: HackJudge AI Evaluation Pipeline
+# Using WorkingDirectory pattern for shared filesystem between tasks
+
+id: evaluate-hackathon-project
+namespace: hackjudge
+
+description: |
+  Main evaluation pipeline for HackJudge AI.
+  Clones a GitHub repository, analyzes code, and generates a readiness report.
+
+labels:
+  project: hackjudge
+  type: evaluation
+
+tasks:
+  # ═══════════════════════════════════════════════════════════════
+  # Main Evaluation Pipeline - All tasks share the same directory
+  # ═══════════════════════════════════════════════════════════════
+  - id: evaluation_pipeline
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    outputFiles:
+      - artifacts/**
+    tasks:
+      # ─────────────────────────────────────────────────────────────
+      # STEP 1: Setup directories
+      # ─────────────────────────────────────────────────────────────
+      - id: setup
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - mkdir -p artifacts
+          - mkdir -p project
+          - echo "Setup complete - $(date)"
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 2: Clone Repository
+      # ─────────────────────────────────────────────────────────────
+      - id: clone_repository
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: alpine/git:latest
+        commands:
+          - git clone --depth 1 --branch "{{ trigger.body.branch ?? 'main' }}" "{{ trigger.body.repo_url }}" project
+          - ls -la project/
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 2.5: Security Scan (npm audit)
+      # ─────────────────────────────────────────────────────────────
+      - id: security_scan
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Run security scan on dependencies
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: node:20-slim
+        commands:
+          - |
+            echo "🔒 Starting security scan..."
+            
+            # Initialize result file
+            cat > artifacts/security_audit.json << 'INITJSON'
+            {
+              "scanType": "npm_audit",
+              "vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0},
+              "hasPackageJson": false,
+              "summary": "No package.json found",
+              "score": 100
+            }
+            INITJSON
+            
+            if [ -f project/package.json ]; then
+              echo "📦 Found package.json, running npm audit..."
+              cd project
+              
+              # Generate package-lock if needed
+              npm install --package-lock-only --ignore-scripts 2>/dev/null || true
+              
+              # Run npm audit and capture output
+              npm audit --json > ../artifacts/npm_audit_raw.json 2>/dev/null || true
+              
+              # Parse the audit results
+              if [ -f ../artifacts/npm_audit_raw.json ]; then
+                CRITICAL=$(cat ../artifacts/npm_audit_raw.json | grep -o '"critical":[0-9]*' | head -1 | grep -o '[0-9]*' || echo "0")
+                HIGH=$(cat ../artifacts/npm_audit_raw.json | grep -o '"high":[0-9]*' | head -1 | grep -o '[0-9]*' || echo "0")
+                MODERATE=$(cat ../artifacts/npm_audit_raw.json | grep -o '"moderate":[0-9]*' | head -1 | grep -o '[0-9]*' || echo "0")
+                LOW=$(cat ../artifacts/npm_audit_raw.json | grep -o '"low":[0-9]*' | head -1 | grep -o '[0-9]*' || echo "0")
+                
+                # Default to 0 if empty
+                CRITICAL=${CRITICAL:-0}
+                HIGH=${HIGH:-0}
+                MODERATE=${MODERATE:-0}
+                LOW=${LOW:-0}
+                
+                # Calculate score
+                SCORE=$((100 - CRITICAL * 25 - HIGH * 10 - MODERATE * 3))
+                if [ $SCORE -lt 0 ]; then SCORE=0; fi
+                
+                TOTAL=$((CRITICAL + HIGH + MODERATE + LOW))
+                
+                if [ $TOTAL -eq 0 ]; then
+                  SUMMARY="✅ No vulnerabilities found!"
+                else
+                  SUMMARY="Found $TOTAL vulnerabilities ($CRITICAL critical, $HIGH high)"
+                fi
+                
+                cat > ../artifacts/security_audit.json << ENDJSON
+            {
+              "scanType": "npm_audit",
+              "vulnerabilities": {"critical": $CRITICAL, "high": $HIGH, "moderate": $MODERATE, "low": $LOW},
+              "hasPackageJson": true,
+              "summary": "$SUMMARY",
+              "score": $SCORE
+            }
+            ENDJSON
+                
+                echo "Security Score: $SCORE/100"
+                echo "$SUMMARY"
+              fi
+              
+              cd ..
+            else
+              echo "ℹ️ No package.json found, skipping npm audit"
+            fi
+            
+            echo "✅ Security scan complete"
+            cat artifacts/security_audit.json
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 3: Extract Metadata & Analyze Code
+      # ─────────────────────────────────────────────────────────────
+      - id: analyze_project
+        type: io.kestra.plugin.scripts.python.Script
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: python:3.11-slim
+        beforeCommands:
+          - pip install pathlib2 requests --quiet
+        script: |
+          import os
+          import json
+          from pathlib import Path
+          from datetime import datetime
+          
+          project_dir = Path("project")
+          artifacts_dir = Path("artifacts")
+          
+          print(f"Analyzing project in: {project_dir.absolute()}")
+          print(f"Contents: {list(project_dir.iterdir()) if project_dir.exists() else 'NOT FOUND'}")
+          
+          # ─── Extract Metadata ───
+          metadata = {
+              "name": None,
+              "description": None,
+              "language": None,
+              "framework": None,
+              "dependencies": [],
+              "hasReadme": False,
+              "hasTests": False,
+              "structure": []
+          }
+          
+          # Check package.json (Node.js)
+          package_json = project_dir / "package.json"
+          if package_json.exists():
+              try:
+                  with open(package_json) as f:
+                      pkg = json.load(f)
+                  metadata["name"] = pkg.get("name")
+                  metadata["description"] = pkg.get("description")
+                  metadata["language"] = "JavaScript/TypeScript"
+                  deps = list(pkg.get("dependencies", {}).keys())
+                  metadata["dependencies"] = deps[:20]
+                  
+                  # Detect framework
+                  if "next" in deps:
+                      metadata["framework"] = "Next.js"
+                  elif "react" in deps:
+                      metadata["framework"] = "React"
+                  elif "vue" in deps:
+                      metadata["framework"] = "Vue.js"
+                  elif "express" in deps:
+                      metadata["framework"] = "Express.js"
+              except Exception as e:
+                  print(f"Error reading package.json: {e}")
+          
+          # Check for README
+          for readme_name in ["README.md", "README.rst", "README.txt", "readme.md"]:
+              if (project_dir / readme_name).exists():
+                  metadata["hasReadme"] = True
+                  break
+          
+          # Check for tests
+          test_patterns = ["test", "tests", "__tests__", "spec", "specs"]
+          for pattern in test_patterns:
+              if (project_dir / pattern).is_dir():
+                  metadata["hasTests"] = True
+                  break
+          
+          # Get file structure (top level)
+          if project_dir.exists():
+              for item in sorted(project_dir.iterdir()):
+                  if not item.name.startswith('.'):
+                      metadata["structure"].append({
+                          "name": item.name,
+                          "type": "directory" if item.is_dir() else "file"
+                      })
+          
+          # Save metadata
+          with open(artifacts_dir / "metadata.json", "w") as f:
+              json.dump(metadata, f, indent=2)
+          
+          print("Metadata extracted:")
+          print(json.dumps(metadata, indent=2))
+          
+          # ─── Code Quality Analysis ───
+          code_quality = {
+              "agentName": "Code Quality & Architecture Agent",
+              "agentType": "code_quality",
+              "score": 75,
+              "confidence": 90,
+              "strengths": [],
+              "weaknesses": [],
+              "judgeComment": ""
+          }
+          
+          # Check TypeScript
+          has_ts = (project_dir / "tsconfig.json").exists()
+          if has_ts:
+              code_quality["score"] += 10
+              code_quality["strengths"].append("Using TypeScript for type safety")
+          
+          # Check linting
+          has_eslint = (project_dir / ".eslintrc.json").exists() or (project_dir / ".eslintrc.js").exists()
+          if has_eslint:
+              code_quality["score"] += 5
+              code_quality["strengths"].append("ESLint configured for code consistency")
+          
+          # Check package-lock or yarn.lock
+          has_lockfile = (project_dir / "package-lock.json").exists() or (project_dir / "yarn.lock").exists()
+          if has_lockfile:
+              code_quality["strengths"].append("Lockfile present for reproducible builds")
+          
+          # Check .gitignore
+          has_gitignore = (project_dir / ".gitignore").exists()
+          if not has_gitignore:
+              code_quality["weaknesses"].append("Missing .gitignore file")
+          
+          if metadata["hasTests"]:
+              code_quality["score"] += 5
+              code_quality["strengths"].append("Test directory present")
+          else:
+              code_quality["weaknesses"].append("No test directory found")
+          
+          code_quality["score"] = min(code_quality["score"], 100)
+          code_quality["judgeComment"] = f"Code analysis score: {code_quality['score']}/100"
+          
+          with open(artifacts_dir / "agent_code_quality.json", "w") as f:
+              json.dump(code_quality, f, indent=2)
+          
+          # ─── UX & Design Analysis ───
+          ux_analysis = {
+              "agentName": "UX & Design Agent",
+              "agentType": "ux",
+              "score": 70,
+              "confidence": 85,
+              "strengths": [],
+              "weaknesses": [],
+              "judgeComment": ""
+          }
+          
+          # Check for styling
+          has_css = any(project_dir.rglob("*.css"))
+          has_tailwind = (project_dir / "tailwind.config.js").exists() or (project_dir / "tailwind.config.ts").exists()
+          
+          if has_tailwind:
+              ux_analysis["score"] += 10
+              ux_analysis["strengths"].append("Using Tailwind CSS for modern styling")
+          elif has_css:
+              ux_analysis["strengths"].append("Custom CSS styling present")
+          
+          # Check for responsive design
+          if metadata.get("framework") in ["Next.js", "React", "Vue.js"]:
+              ux_analysis["score"] += 10
+              ux_analysis["strengths"].append(f"Using {metadata['framework']} for component-based UI")
+          
+          ux_analysis["score"] = min(ux_analysis["score"], 100)
+          ux_analysis["judgeComment"] = f"UX analysis score: {ux_analysis['score']}/100"
+          
+          with open(artifacts_dir / "agent_ux.json", "w") as f:
+              json.dump(ux_analysis, f, indent=2)
+          
+          # ─── Product & Innovation Analysis with Vision Clarity ───
+          product_analysis = {
+              "agentName": "Product & Innovation Agent",
+              "agentType": "product",
+              "score": 75,
+              "confidence": 80,
+              "strengths": [],
+              "weaknesses": [],
+              "visionAnalysis": {
+                  "hasClearVision": False,
+                  "problemStatement": None,
+                  "solution": None,
+                  "innovation": None,
+                  "targetAudience": None,
+                  "clarity_score": 0
+              },
+              "judgeComment": ""
+          }
+          
+          # Extract vision from README
+          import re
+          
+          readme_path = project_dir / "README.md"
+          readme_content = ""
+          if readme_path.exists():
+              readme_content = readme_path.read_text()
+              readme_len = len(readme_content)
+              
+              # Score based on length
+              if readme_len > 2000:
+                  product_analysis["score"] += 10
+                  product_analysis["strengths"].append("Comprehensive README documentation")
+              elif readme_len > 500:
+                  product_analysis["strengths"].append("Good README documentation")
+              else:
+                  product_analysis["weaknesses"].append("README could be more detailed")
+              
+              # Extract key sections using regex patterns
+              vision_patterns = {
+                  "problem": r"(?:##?\s*(?:Problem|The Problem|Problem Statement|Why|Motivation|Background))\s*\n(.*?)(?=\n##|\Z)",
+                  "solution": r"(?:##?\s*(?:Solution|How|What|How it Works|Our Solution|Overview))\s*\n(.*?)(?=\n##|\Z)",
+                  "features": r"(?:##?\s*(?:Features|Key Features|Highlights))\s*\n(.*?)(?=\n##|\Z)",
+                  "vision": r"(?:##?\s*(?:Vision|Mission|Goal|Goals|Objectives))\s*\n(.*?)(?=\n##|\Z)",
+                  "innovation": r"(?:##?\s*(?:Innovation|Unique|Differentiator|Why Us|What Makes|Built With))\s*\n(.*?)(?=\n##|\Z)",
+              }
+              
+              sections_found = 0
+              clarity_score = 0
+              
+              for key, pattern in vision_patterns.items():
+                  match = re.search(pattern, readme_content, re.IGNORECASE | re.DOTALL)
+                  if match:
+                      content = match.group(1).strip()[:500]  # Limit to 500 chars
+                      product_analysis["visionAnalysis"][key] = content
+                      sections_found += 1
+                      
+                      # Score based on content quality
+                      if len(content) > 100:
+                          clarity_score += 20
+                      elif len(content) > 50:
+                          clarity_score += 10
+              
+              # Check for problem/solution clarity
+              if sections_found >= 2:
+                  product_analysis["visionAnalysis"]["hasClearVision"] = True
+                  product_analysis["strengths"].append("Clear project vision with problem/solution defined")
+                  product_analysis["score"] += 10
+              elif sections_found == 1:
+                  product_analysis["strengths"].append("Has some vision clarity but could be expanded")
+              else:
+                  product_analysis["weaknesses"].append("Missing clear problem/solution sections in README")
+                  product_analysis["visionAnalysis"]["hasClearVision"] = False
+              
+              product_analysis["visionAnalysis"]["clarity_score"] = min(clarity_score, 100)
+              
+              # Check for demo/screenshots
+              if "demo" in readme_content.lower() or "screenshot" in readme_content.lower():
+                  product_analysis["strengths"].append("Includes demo/screenshots")
+                  product_analysis["score"] += 5
+              
+              # Check for tech stack section
+              if "tech" in readme_content.lower() and "stack" in readme_content.lower():
+                  product_analysis["strengths"].append("Tech stack documented")
+          
+          product_analysis["score"] = min(product_analysis["score"], 100)
+          product_analysis["judgeComment"] = f"Product analysis score: {product_analysis['score']}/100. Vision clarity: {product_analysis['visionAnalysis']['clarity_score']}/100"
+          
+          with open(artifacts_dir / "agent_product.json", "w") as f:
+              json.dump(product_analysis, f, indent=2)
+          
+          # ─── Presentation & Documentation Analysis ───
+          presentation = {
+              "agentName": "Presentation Agent",
+              "agentType": "presentation",
+              "score": 60,
+              "confidence": 90,
+              "checks": {
+                  "hasReadme": metadata["hasReadme"],
+                  "hasContributing": (project_dir / "CONTRIBUTING.md").exists(),
+                  "hasLicense": (project_dir / "LICENSE").exists() or (project_dir / "LICENSE.md").exists(),
+                  "hasChangelog": (project_dir / "CHANGELOG.md").exists()
+              },
+              "strengths": [],
+              "weaknesses": [],
+              "judgeComment": ""
+          }
+          
+          if presentation["checks"]["hasReadme"]:
+              presentation["score"] += 15
+              presentation["strengths"].append("Has README file")
+          if presentation["checks"]["hasContributing"]:
+              presentation["score"] += 10
+              presentation["strengths"].append("Has contribution guidelines")
+          if presentation["checks"]["hasLicense"]:
+              presentation["score"] += 10
+              presentation["strengths"].append("Proper open-source license")
+          if presentation["checks"]["hasChangelog"]:
+              presentation["score"] += 5
+              presentation["strengths"].append("Maintains a changelog")
+          
+          presentation["score"] = min(presentation["score"], 100)
+          presentation["judgeComment"] = f"Documentation score: {presentation['score']}/100"
+          
+          with open(artifacts_dir / "agent_presentation.json", "w") as f:
+              json.dump(presentation, f, indent=2)
+          
+          # ─── Performance Agent via PageSpeed Insights API ───
+          import requests
+          import re
+          
+          performance = {
+              "agentName": "Performance Agent",
+              "agentType": "performance",
+              "score": 65,
+              "confidence": 50,
+              "strengths": [],
+              "weaknesses": [],
+              "lighthouse": None,
+              "demoUrl": None,
+              "judgeComment": "No live demo URL detected"
+          }
+          
+          # Extract demo URL from README
+          demo_url = None
+          demo_patterns = [
+              r'https?://[a-zA-Z0-9\-]+\.vercel\.app[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.netlify\.app[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.github\.io[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.render\.com[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.fly\.dev[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.railway\.app[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.herokuapp\.com[^\s\)\"\']*',
+              r'https?://[a-zA-Z0-9\-]+\.surge\.sh[^\s\)\"\']*',
+          ]
+          
+          if readme_content:
+              for pattern in demo_patterns:
+                  match = re.search(pattern, readme_content)
+                  if match:
+                      demo_url = match.group(0).rstrip('.,;:)')
+                      break
+          
+          # Also check package.json homepage
+          if not demo_url and package_json.exists():
+              try:
+                  with open(package_json) as f:
+                      pkg = json.load(f)
+                  homepage = pkg.get("homepage", "")
+                  if homepage and ("vercel" in homepage or "netlify" in homepage or "github.io" in homepage):
+                      demo_url = homepage
+              except:
+                  pass
+          
+          if demo_url:
+              print(f"🌐 Found demo URL: {demo_url}")
+              performance["demoUrl"] = demo_url
+              
+              try:
+                  # Call PageSpeed Insights API (free, no API key needed)
+                  psi_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={demo_url}&strategy=mobile&category=performance&category=accessibility&category=best-practices&category=seo"
+                  
+                  print(f"📊 Calling PageSpeed Insights API...")
+                  psi_response = requests.get(psi_url, timeout=120)
+                  
+                  if psi_response.status_code == 200:
+                      psi_data = psi_response.json()
+                      lighthouse = psi_data.get("lighthouseResult", {})
+                      categories = lighthouse.get("categories", {})
+                      
+                      # Extract scores (0-1 scale, convert to 0-100)
+                      perf_score = int((categories.get("performance", {}).get("score", 0.65) or 0.65) * 100)
+                      a11y_score = int((categories.get("accessibility", {}).get("score", 0.8) or 0.8) * 100)
+                      bp_score = int((categories.get("best-practices", {}).get("score", 0.8) or 0.8) * 100)
+                      seo_score = int((categories.get("seo", {}).get("score", 0.8) or 0.8) * 100)
+                      
+                      performance["score"] = perf_score
+                      performance["confidence"] = 95
+                      performance["lighthouse"] = {
+                          "performance": perf_score,
+                          "accessibility": a11y_score,
+                          "bestPractices": bp_score,
+                          "seo": seo_score
+                      }
+                      
+                      # Analyze results
+                      if perf_score >= 90:
+                          performance["strengths"].append(f"Excellent performance score: {perf_score}/100")
+                      elif perf_score >= 70:
+                          performance["strengths"].append(f"Good performance score: {perf_score}/100")
+                      else:
+                          performance["weaknesses"].append(f"Performance needs improvement: {perf_score}/100")
+                      
+                      if a11y_score >= 90:
+                          performance["strengths"].append(f"Excellent accessibility: {a11y_score}/100")
+                      elif a11y_score < 70:
+                          performance["weaknesses"].append(f"Accessibility issues detected: {a11y_score}/100")
+                      
+                      if seo_score >= 90:
+                          performance["strengths"].append(f"SEO optimized: {seo_score}/100")
+                      
+                      performance["judgeComment"] = f"Live Lighthouse audit: Performance {perf_score}/100, Accessibility {a11y_score}/100, Best Practices {bp_score}/100, SEO {seo_score}/100"
+                      
+                      print(f"✅ Lighthouse scores: Perf={perf_score}, A11y={a11y_score}, BP={bp_score}, SEO={seo_score}")
+                  else:
+                      print(f"⚠ PageSpeed API returned {psi_response.status_code}")
+                      performance["weaknesses"].append("Could not fetch live performance metrics")
+                      performance["judgeComment"] = f"Demo URL found ({demo_url}) but PageSpeed API failed"
+                      
+              except requests.exceptions.Timeout:
+                  print("⚠ PageSpeed API timed out (site may be slow to load)")
+                  performance["weaknesses"].append("Performance test timed out - site may be slow")
+                  performance["judgeComment"] = f"Demo URL found ({demo_url}) but test timed out"
+              except Exception as e:
+                  print(f"⚠ PageSpeed API error: {e}")
+                  performance["weaknesses"].append("Could not complete performance test")
+          else:
+              print("ℹ No demo URL found in README or package.json")
+              performance["weaknesses"].append("No live demo URL detected - add one to get real performance scores")
+              performance["judgeComment"] = "No live demo URL found. Add a deployed URL to README for real Lighthouse scores."
+          
+          performance["score"] = min(max(performance["score"], 0), 100)
+          
+          with open(artifacts_dir / "agent_performance.json", "w") as f:
+              json.dump(performance, f, indent=2)
+          
+          # ─── Check for CodeRabbit ───
+          coderabbit_check = {
+              "hasCodeRabbit": (project_dir / ".coderabbit.yaml").exists(),
+              "canSetup": True
+          }
+          
+          with open(artifacts_dir / "coderabbit_check.json", "w") as f:
+              json.dump(coderabbit_check, f, indent=2)
+          
+          print("\n✅ All agent analyses complete!")
+          
+          # ─── Extract Code Context for Chat Feature ───
+          code_context = {
+              "files": [],
+              "structure": metadata.get("structure", []),
+              "totalSnippets": 0,
+              "maxTokensEstimate": 0
+          }
+          
+          # Key files to extract for chat context
+          priority_files = [
+              "README.md", "package.json", "tsconfig.json",
+              "next.config.js", "next.config.ts", "vite.config.ts",
+              "tailwind.config.js", "tailwind.config.ts",
+              "src/app/page.tsx", "src/pages/index.tsx", "src/index.tsx",
+              "src/App.tsx", "src/App.jsx", "app/page.tsx",
+              "src/main.ts", "src/main.tsx", "index.html"
+          ]
+          
+          # Also grab any component files (limit to 10)
+          component_patterns = ["**/components/**/*.tsx", "**/components/**/*.jsx"]
+          
+          for pf in priority_files:
+              file_path = project_dir / pf
+              if file_path.exists() and file_path.is_file():
+                  try:
+                      content = file_path.read_text()[:5000]  # Max 5k chars per file
+                      code_context["files"].append({
+                          "path": pf,
+                          "content": content,
+                          "size": len(content)
+                      })
+                      code_context["totalSnippets"] += 1
+                  except Exception as e:
+                      print(f"⚠ Could not read {pf}: {e}")
+          
+          # Find additional source files if we have room (max 15 total files)
+          if code_context["totalSnippets"] < 15:
+              src_dirs = ["src", "app", "components", "lib", "pages"]
+              for src_dir in src_dirs:
+                  src_path = project_dir / src_dir
+                  if src_path.is_dir():
+                      for ext in ["*.tsx", "*.jsx", "*.ts", "*.js"]:
+                          for f in list(src_path.rglob(ext))[:5]:
+                              if code_context["totalSnippets"] >= 15:
+                                  break
+                              rel_path = str(f.relative_to(project_dir))
+                              if not any(cf["path"] == rel_path for cf in code_context["files"]):
+                                  try:
+                                      content = f.read_text()[:3000]
+                                      code_context["files"].append({
+                                          "path": rel_path,
+                                          "content": content,
+                                          "size": len(content)
+                                      })
+                                      code_context["totalSnippets"] += 1
+                                  except:
+                                      pass
+          
+          # Estimate token count (rough: 1 token ≈ 4 chars)
+          total_chars = sum(f["size"] for f in code_context["files"])
+          code_context["maxTokensEstimate"] = total_chars // 4
+          
+          with open(artifacts_dir / "code_context.json", "w") as f:
+              json.dump(code_context, f, indent=2)
+          
+          print(f"✅ Code context extracted: {code_context['totalSnippets']} files, ~{code_context['maxTokensEstimate']} tokens")
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 4: AI-Powered Analysis Summary (via OpenRouter HTTP API)
+      # Uses direct HTTP call since io.kestra.plugin.openai doesn't support custom baseUrl
+      # ─────────────────────────────────────────────────────────────
+      - id: ai_summarize_analysis
+        type: io.kestra.plugin.scripts.python.Script
+        description: Call OpenRouter API for AI-powered project analysis
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: python:3.11-slim
+        beforeCommands:
+          - pip install requests --quiet
+        env:
+          OPENROUTER_API_KEY: "{{ secret('OPENAI_API_KEY') }}"
+        script: |
+          import os
+          import json
+          import requests
+          from pathlib import Path
+          
+          artifacts_dir = Path("artifacts")
+          
+          # Load analysis results
+          metadata = json.load(open(artifacts_dir / "metadata.json"))
+          code_quality = json.load(open(artifacts_dir / "agent_code_quality.json"))
+          ux = json.load(open(artifacts_dir / "agent_ux.json"))
+          product = json.load(open(artifacts_dir / "agent_product.json"))
+          presentation = json.load(open(artifacts_dir / "agent_presentation.json"))
+          
+          # Build prompt
+          prompt = f"""Analyze this hackathon project:
+
+          Project Metadata:
+          {json.dumps(metadata, indent=2)}
+
+          Code Quality Analysis:
+          {json.dumps(code_quality, indent=2)}
+
+          UX & Design Analysis:
+          {json.dumps(ux, indent=2)}
+
+          Product Analysis:
+          {json.dumps(product, indent=2)}
+
+          Presentation & Documentation:
+          {json.dumps(presentation, indent=2)}
+
+          Please provide your analysis in JSON format."""
+          
+          # Call OpenRouter API
+          api_key = os.environ.get("OPENROUTER_API_KEY")
+          
+          response = requests.post(
+              "https://openrouter.ai/api/v1/chat/completions",
+              headers={
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://hackjudge.ai",
+                  "X-Title": "HackJudge AI"
+              },
+              json={
+                  "model": "meta-llama/llama-3.1-70b-instruct",
+                  "messages": [
+                      {
+                          "role": "system",
+                          "content": """You are a senior hackathon judge and technical mentor. Analyze the provided project data to provide a comprehensive, actionable evaluation.
+
+          Your goal is to help the developer significantly improve their project. Do not just list scores.
+          1. **Executive Summary**: A professional, high-level overview of the project's status, highlighting its unique value proposition and technical merit.
+          2. **Submission Readiness**: A definitive YES/NO with a detailed justification.
+          3. **Actionable Improvements**: Provide 3-5 specific, high-impact improvements. For each, explain WHY it matters and HOW to implement it (briefly).
+          4. **Prize Tracks**: Suggest eligible tracks with reasoning.
+
+          Respond in JSON format with keys: summary, submissionReady, topImprovements, eligibleTracks"""
+                      },
+                      {"role": "user", "content": prompt}
+                  ],
+                  "temperature": 0.7,
+                  "max_tokens": 2000
+              },
+              timeout=120
+          )
+          
+          if response.status_code != 200:
+              print(f"Error: {response.status_code}")
+              print(response.text)
+              raise Exception(f"OpenRouter API error: {response.status_code}")
+          
+          result = response.json()
+          ai_content = result["choices"][0]["message"]["content"]
+          
+          # Save AI summary
+          ai_summary = {
+              "model": "meta-llama/llama-3.1-70b-instruct",
+              "provider": "OpenRouter via HTTP",
+              "response": ai_content
+          }
+          
+          with open(artifacts_dir / "ai_summary.json", "w") as f:
+              json.dump(ai_summary, f, indent=2)
+          
+          print("✅ AI Summary generated and saved")
+          print(f"Response preview: {ai_content[:500]}...")
+
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 6: Generate Final Report
+      # ─────────────────────────────────────────────────────────────
+
+      - id: generate_report
+        type: io.kestra.plugin.scripts.python.Script
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: python:3.11-slim
+        script: |
+          import json
+          from pathlib import Path
+          from datetime import datetime
+          
+          artifacts_dir = Path("artifacts")
+          
+          print(f"Generating final report from: {artifacts_dir.absolute()}")
+          print(f"Contents: {list(artifacts_dir.iterdir())}")
+          
+          # Load all agent results
+          agents = []
+          agent_files = [
+              "agent_code_quality.json",
+              "agent_ux.json",
+              "agent_performance.json",
+              "agent_product.json",
+              "agent_presentation.json"
+          ]
+          
+          for agent_file in agent_files:
+              path = artifacts_dir / agent_file
+              if path.exists():
+                  with open(path) as f:
+                      agents.append(json.load(f))
+                  print(f"✓ Loaded {agent_file}")
+          
+          # Load metadata
+          metadata = {}
+          metadata_path = artifacts_dir / "metadata.json"
+          if metadata_path.exists():
+              with open(metadata_path) as f:
+                  metadata = json.load(f)
+          
+          # Calculate dimension scores
+          dimensions = {
+              "innovation": 75,
+              "technical": 80,
+              "ux": 80,
+              "performance": 65,
+              "codeQuality": 80,
+              "presentation": 70
+          }
+          
+          for agent in agents:
+              agent_type = agent.get("agentType", "")
+              score = agent.get("score", 75)
+              if agent_type == "code_quality":
+                  dimensions["codeQuality"] = score
+                  dimensions["technical"] = score
+              elif agent_type == "ux":
+                  dimensions["ux"] = score
+              elif agent_type == "performance":
+                  dimensions["performance"] = score
+              elif agent_type == "product":
+                  dimensions["innovation"] = score
+              elif agent_type == "presentation":
+                  dimensions["presentation"] = score
+          
+          # Calculate overall readiness score (weighted average)
+          readiness_score = int(
+              dimensions["innovation"] * 0.15 +
+              dimensions["technical"] * 0.20 +
+              dimensions["ux"] * 0.15 +
+              dimensions["performance"] * 0.15 +
+              dimensions["codeQuality"] * 0.20 +
+              dimensions["presentation"] * 0.15
+          )
+          
+          # Determine status
+          if readiness_score >= 85:
+              status = "STRONG"
+          elif readiness_score >= 70:
+              status = "GOOD"
+          elif readiness_score >= 50:
+              status = "NEEDS_WORK"
+          else:
+              status = "WEAK"
+          
+          # Collect strengths and weaknesses
+          all_strengths = []
+          all_weaknesses = []
+          for agent in agents:
+              all_strengths.extend(agent.get("strengths", []))
+              all_weaknesses.extend(agent.get("weaknesses", []))
+          
+          # Load CodeRabbit check
+          coderabbit = {"hasCodeRabbit": False, "canSetup": True}
+          cr_path = artifacts_dir / "coderabbit_check.json"
+          if cr_path.exists():
+              try:
+                  with open(cr_path) as f:
+                      coderabbit = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"⚠ CodeRabbit config is not valid JSON: {e}")
+              except Exception as e:
+                  print(f"⚠ Unexpected error loading CodeRabbit config: {e}")
+          
+          # Load Code Context for Chat Feature
+          code_context = {"files": [], "totalSnippets": 0, "maxTokensEstimate": 0}
+          cc_path = artifacts_dir / "code_context.json"
+          if cc_path.exists():
+              try:
+                  with open(cc_path) as f:
+                      code_context = json.load(f)
+                  print(f"✓ Loaded code context: {code_context.get('totalSnippets', 0)} files")
+              except Exception as e:
+                  print(f"⚠ Error loading code context: {e}")
+          
+          # Load Security Scan Results
+          security = {"score": 100, "vulnerabilities": {"critical": 0, "high": 0, "moderate": 0, "low": 0}, "summary": "Not scanned"}
+          security_path = artifacts_dir / "security_audit.json"
+          if security_path.exists():
+              try:
+                  with open(security_path) as f:
+                      security = json.load(f)
+                  print(f"✓ Loaded security scan: {security.get('summary', 'N/A')}")
+                  # Add security score to dimensions
+                  dimensions["security"] = security.get("score", 100)
+              except Exception as e:
+                  print(f"⚠ Error loading security scan: {e}")
+          
+          # CI/CD Detection
+          project_dir = Path("project")
+          cicd_status = {
+              "hasCI": False,
+              "provider": None,
+              "hasDocker": False,
+              "hasDeployConfig": False,
+              "details": []
+          }
+          
+          # Check GitHub Actions
+          gh_workflows = project_dir / ".github" / "workflows"
+          if gh_workflows.is_dir():
+              cicd_status["hasCI"] = True
+              cicd_status["provider"] = "GitHub Actions"
+              cicd_status["details"].append("GitHub Actions workflows found")
+          
+          # Check GitLab CI
+          if (project_dir / ".gitlab-ci.yml").exists():
+              cicd_status["hasCI"] = True
+              cicd_status["provider"] = "GitLab CI"
+              cicd_status["details"].append("GitLab CI configuration found")
+          
+          # Check Jenkinsfile
+          if (project_dir / "Jenkinsfile").exists():
+              cicd_status["hasCI"] = True
+              cicd_status["provider"] = "Jenkins"
+              cicd_status["details"].append("Jenkinsfile found")
+          
+          # Check Docker
+          if (project_dir / "Dockerfile").exists() or (project_dir / "docker-compose.yml").exists():
+              cicd_status["hasDocker"] = True
+              cicd_status["details"].append("Docker configuration found")
+          
+          # Check deploy configs
+          deploy_files = ["vercel.json", "netlify.toml", "fly.toml", "render.yaml", "railway.json"]
+          for df in deploy_files:
+              if (project_dir / df).exists():
+                  cicd_status["hasDeployConfig"] = True
+                  cicd_status["details"].append(f"{df} found")
+                  break
+          
+          print(f"✓ CI/CD: {cicd_status['provider'] or 'None'}, Docker: {cicd_status['hasDocker']}, Deploy: {cicd_status['hasDeployConfig']}")
+          
+          # Load AI Summary from Kestra Native AI Plugin
+          ai_summary = {"available": False}
+          ai_path = artifacts_dir / "ai_summary.json"
+          if ai_path.exists():
+              try:
+                  with open(ai_path) as f:
+                      ai_summary = json.load(f)
+                  print("✓ Loaded AI summary file from Kestra OpenAI plugin")
+              except json.JSONDecodeError as e:
+                  print(f"⚠ AI summary is not valid JSON: {e}")
+                  ai_summary = {"available": False, "error": "Invalid JSON"}
+              except Exception as e:
+                  print(f"⚠ Unexpected error loading AI summary: {e}")
+                  ai_summary = {"available": False, "error": str(e)}
+              
+              # Validate AI response structure - only set available=True after validation passes
+              if "response" in ai_summary:
+                  try:
+                      response_content = ai_summary.get("response")
+                      if isinstance(response_content, str):
+                          parsed_response = json.loads(response_content)
+                      else:
+                          parsed_response = response_content
+                      
+                      # Validate required keys from system prompt
+                      required_keys = ["summary", "submissionReady", "topImprovements", "eligibleTracks"]
+                      missing_keys = [k for k in required_keys if k not in parsed_response]
+                      if missing_keys:
+                          print(f"⚠ AI response missing keys: {missing_keys}")
+                          ai_summary["available"] = False
+                          ai_summary["validationWarning"] = f"Missing keys: {missing_keys}"
+                      else:
+                          print("✓ AI response structure validated")
+                          # Flatten parsed fields into top level for easy access
+                          ai_summary.update(parsed_response)
+                          ai_summary["available"] = True
+                  except json.JSONDecodeError as e:
+                      print(f"⚠ AI response content is not valid JSON: {e}")
+                      ai_summary["available"] = False
+                      ai_summary["validationError"] = str(e)
+                  except Exception as e:
+                      print(f"⚠ Error validating AI response: {e}")
+                      ai_summary["available"] = False
+
+          
+          # Build award eligibility
+          awards = []
+          if len([d for d in metadata.get("dependencies", []) if d in ["kestra", "next", "react", "together"]]) >= 2:
+              awards.append({
+                  "name": "Infinity Build Award",
+                  "eligible": True,
+                  "reason": "Uses multiple sponsor tools"
+              })
+          
+          if not coderabbit["hasCodeRabbit"]:
+              awards.append({
+                  "name": "Captain Code (CodeRabbit)",
+                  "eligible": False,
+                  "reason": "CodeRabbit not configured - can be set up automatically",
+                  "canAutoSetup": True
+              })
+          
+          # Build final report
+          report = {
+              "projectId": "{{ trigger.body.job_id }}",
+              "repoUrl": "{{ trigger.body.repo_url }}",
+              "branch": "{{ trigger.body.branch ?? 'main' }}",
+              "readinessScore": readiness_score,
+              "status": status,
+              "summary": ai_summary.get("summary", f"Project evaluation complete. Overall readiness: {readiness_score}/100 ({status}). {'Excellent project structure!' if readiness_score >= 80 else 'Good foundation with room for improvement.'}"),
+              "dimensions": dimensions,
+              "strengths": all_strengths[:5],
+              "weaknesses": (ai_summary.get("topImprovements", []) + all_weaknesses)[:8],
+              "agentFeedback": agents,
+              "metadata": metadata,
+              "security": security,
+              "cicdStatus": cicd_status,
+              "awardEligibility": awards,
+              "coderabbitStatus": coderabbit,
+              "aiSummary": ai_summary,
+              "codeContext": code_context if 'code_context' in dir() else {"files": [], "totalSnippets": 0},
+              "generatedContent": {
+                  "devpostDraft": "",
+                  "pitchScript": "",
+                  "architectureDiagram": ""
+              },
+              "completedAt": datetime.now().isoformat()
+          }
+
+          
+          # Save final report
+          with open(artifacts_dir / "final_report.json", "w") as f:
+              json.dump(report, f, indent=2)
+          
+          print("\n" + "="*60)
+          print("📊 FINAL REPORT")
+          print("="*60)
+          print(f"Readiness Score: {readiness_score}/100")
+          print(f"Status: {status}")
+          print(f"Agents analyzed: {len(agents)}")
+          print(f"Strengths: {len(all_strengths)}")
+          print(f"Weaknesses: {len(all_weaknesses)}")
+          print("="*60)
+          print("\n✅ Report saved to artifacts/final_report.json")
+          
+          # Export variables for downstream Kestra tasks (GitHub plugin)
+          kestra_outputs = {
+              "readiness_score": readiness_score,
+              "status": status,
+              "innovation_score": dimensions.get("innovation", 0),
+              "technical_score": dimensions.get("technical", 0),
+              "ux_score": dimensions.get("ux", 0),
+              "performance_score": dimensions.get("performance", 0),
+              "code_quality_score": dimensions.get("codeQuality", 0),
+              "presentation_score": dimensions.get("presentation", 0),
+              "has_ci": cicd_status.get("hasCI", False),
+              "top_strengths": all_strengths[:3],
+              "top_weaknesses": all_weaknesses[:3],
+          }
+          
+          with open("kestra_outputs.json", "w") as f:
+              json.dump(kestra_outputs, f)
+          
+          print(f"✅ Exported {len(kestra_outputs)} variables for GitHub tasks")
+        outputFiles:
+          - "kestra_outputs.json"
+
+      # ─────────────────────────────────────────────────────────────
+      # STEP 7: Send Report via Callback
+      # ─────────────────────────────────────────────────────────────
+      - id: send_callback
+        type: io.kestra.plugin.scripts.python.Script
+        description: Send final report back to HackJudge app via HTTP callback
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+          image: python:3.11-slim
+        beforeCommands:
+          - pip install requests --quiet
+        script: |
+          import json
+          import requests
+          from pathlib import Path
+          
+          artifacts_dir = Path("artifacts")
+          
+          # Load final report
+          report_path = artifacts_dir / "final_report.json"
+          if not report_path.exists():
+              print("❌ No final report found")
+              exit(1)
+          
+          with open(report_path) as f:
+              report = json.load(f)
+          
+          # Send to callback URL (host.docker.internal points to host machine from Docker)
+          callback_url = "http://host.docker.internal:3000/api/kestra/callback"
+          
+          print(f"Sending report to: {callback_url}")
+          print(f"Project ID: {report.get('projectId')}")
+          print(f"Score: {report.get('readinessScore')}/100")
+          
+          try:
+              response = requests.post(
+                  callback_url,
+                  json=report,
+                  headers={"Content-Type": "application/json"},
+                  timeout=30
+              )
+              
+              if response.status_code == 200:
+                  print("✅ Report sent successfully!")
+              else:
+                  print(f"⚠ Callback returned status {response.status_code}: {response.text}")
+          except Exception as e:
+              print(f"⚠ Callback failed (non-fatal): {e}")
+              print("Report is still saved in artifacts.")
+
+      # ─────────────────────────────────────────────────────────────
+      # NOTE: GitHub actions (issue creation, CI/CD PR) are now
+      # handled by separate on-demand flows triggered via the UI:
+      # - create-github-issue.yml (user clicks "[CREATE_ISSUE]")
+      # - setup-cicd.yml (user clicks "[SETUP_CI_CD]")
+      # ─────────────────────────────────────────────────────────────
+
+triggers:
+  - id: api_trigger
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: hackjudge-evaluate
+
+errors:
+  - id: handle_failure
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - echo "Evaluation failed for job {{ trigger.body.job_id }}"
+      - echo "Error occurred at $(date)"

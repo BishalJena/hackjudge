@@ -59,6 +59,20 @@ export interface EvaluationResult {
     generatedContent: GeneratedContent;
     screenshots?: string[];
     lighthouseScores?: LighthouseScores;
+    // Phase 2: Security and CI/CD
+    security?: {
+        score: number;
+        vulnerabilities: { critical: number; high: number; moderate: number; low: number };
+        summary: string;
+    };
+    cicdStatus?: {
+        hasCI: boolean;
+        provider: string | null;
+        hasDocker: boolean;
+        hasDeployConfig: boolean;
+        details: string[];
+    };
+    repoUrl?: string;
     completedAt: Date;
 }
 
