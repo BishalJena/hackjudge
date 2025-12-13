@@ -29,8 +29,9 @@ services:
     command: server standalone --worker-thread=128
     environment:
       # Secrets must be base64-encoded with SECRET_ prefix
-      # Using OpenRouter API (OpenAI-compatible) - will be replaced with Together AI key later
-      SECRET_OPENAI_API_KEY: c2stb3ItdjEtYTFlNDAyYTljMTA5MGUwZDUwM2U0MjNlNDEzYWIwMTJiNjBjYTllMjU4ODAzYTYwYTNkYTFkMDE3MjdlY2I2NQ==
+      # Use: echo -n "your-api-key" | base64
+      # Then set OPENAI_API_KEY_BASE64 in your .env file
+      SECRET_OPENAI_API_KEY: ${OPENAI_API_KEY_BASE64:-}
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:
