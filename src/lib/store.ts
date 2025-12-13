@@ -22,7 +22,6 @@ interface StoredEvaluation {
 
 // Extend globalThis with our store type
 declare global {
-    // eslint-disable-next-line no-var
     var evaluationStore: Map<string, StoredEvaluation> | undefined;
 }
 
@@ -48,13 +47,16 @@ export function createEvaluation(jobId: string, projectId: string, repoUrl: stri
 
 /**
  * Update evaluation status
+ * @returns true if updated, false if jobId not found
  */
-export function updateEvaluationStatus(jobId: string, status: StoredEvaluation['status']): void {
+export function updateEvaluationStatus(jobId: string, status: StoredEvaluation['status']): boolean {
     const evaluation = evaluationStore.get(jobId);
     if (evaluation) {
         evaluation.status = status;
         evaluation.updatedAt = new Date();
+        return true;
     }
+    return false;
 }
 
 /**
@@ -82,6 +84,7 @@ export function storeEvaluationResult(jobId: string, result: EvaluationResult): 
 
 /**
  * Store evaluation error
+ * Creates entry if missing to ensure errors are always tracked
  */
 export function storeEvaluationError(jobId: string, error: string): void {
     const evaluation = evaluationStore.get(jobId);
@@ -89,6 +92,17 @@ export function storeEvaluationError(jobId: string, error: string): void {
         evaluation.error = error;
         evaluation.status = 'failed';
         evaluation.updatedAt = new Date();
+    } else {
+        // Create minimal entry for orphaned errors
+        evaluationStore.set(jobId, {
+            jobId,
+            projectId: '',
+            repoUrl: '',
+            status: 'failed',
+            error,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        });
     }
 }
 

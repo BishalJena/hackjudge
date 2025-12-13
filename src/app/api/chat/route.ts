@@ -76,13 +76,13 @@ Capabilities:
             ...messages.slice(-10), // Last 10 messages for context
         ];
 
-        // Call OpenRouter with streaming
+        // Call OpenRouter with streaming (60s timeout)
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                'HTTP-Referer': 'http://localhost:3000',
+                'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
                 'X-Title': 'HackJudge AI',
             },
             body: JSON.stringify({
@@ -92,6 +92,7 @@ Capabilities:
                 max_tokens: 500, // Reduced for concise responses
                 temperature: 0.7,
             }),
+            signal: AbortSignal.timeout(60_000),
         });
 
         if (!response.ok) {

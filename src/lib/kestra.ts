@@ -526,7 +526,7 @@ export function transformKestraReport(report: KestraReport): import('@/types').E
                 title: improvement.slice(0, 60),
                 issue: improvement,
                 rootCause: 'Identified by AI analysis',
-                impact: 5 + Math.floor(Math.random() * 10),
+                impact: 10 - idx,  // Decreasing impact by rank (deterministic)
                 effort: 2 + idx * 2,
                 actionItems: [improvement],
             });

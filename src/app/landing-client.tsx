@@ -250,6 +250,7 @@ export function LandingPageClient() {
                                         <span className="text-terminal-green">&gt;</span>
                                         <input
                                             type="text"
+                                            aria-label="GitHub repository URL"
                                             className="bg-transparent border-none outline-none w-full text-sm font-mono placeholder-terminal-dim/50"
                                             placeholder="https://github.com/user/repo"
                                             value={repoUrl}
@@ -299,6 +300,7 @@ export function LandingPageClient() {
                             <span className="text-terminal-dim">HACKATHON_URL:</span>
                             <input
                                 type="text"
+                                aria-label="Hackathon page URL"
                                 value={hackathonUrl}
                                 onChange={(e) => setHackathonUrl(e.target.value)}
                                 className="bg-transparent border-b border-terminal-dim focus:border-terminal-green outline-none w-full max-w-xs placeholder-terminal-dim/30"
