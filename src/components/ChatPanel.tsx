@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Button, TerminalCard } from '@/components/ui';
+import { Button } from '@/components/ui';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -171,8 +171,8 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
                             <div
                                 key={i}
                                 className={`p-2 rounded text-sm ${msg.role === 'user'
-                                        ? 'bg-green-500/10 border border-green-500/30 ml-4'
-                                        : 'bg-[var(--color-surface)] mr-4'
+                                    ? 'bg-green-500/10 border border-green-500/30 ml-4'
+                                    : 'bg-[var(--color-surface)] mr-4'
                                     }`}
                             >
                                 <span className="text-xs text-[var(--color-text-dim)] block mb-1">

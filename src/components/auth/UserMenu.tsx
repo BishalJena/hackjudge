@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface UserMenuProps {
@@ -85,14 +86,14 @@ export function UserMenu({ className = '' }: UserMenuProps) {
 
                     {/* Menu Items */}
                     <div className="py-1">
-                        <a
+                        <Link
                             href="/"
                             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
                             onClick={() => setIsOpen(false)}
                         >
                             <DashboardIcon className="w-4 h-4" />
                             Dashboard
-                        </a>
+                        </Link>
                         <a
                             href={`https://github.com/${user.login}`}
                             target="_blank"

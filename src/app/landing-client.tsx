@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { TypeShuffle, AsciiArt } from '@/components/ui';
 import { useAuth } from '@/contexts/AuthContext';

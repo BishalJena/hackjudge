@@ -207,7 +207,7 @@ async function handleLLMMode(
         sendProgress(0, 'running', ['⋯ Fetching repository...']);
 
         let metadata: EvaluationInput['metadata'] = {};
-        let readme = '';
+        const readme = '';
 
         if (parsed) {
             // Fetch basic repo info

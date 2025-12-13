@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import type { EvaluationResult, Improvement } from '@/types';
+import type { EvaluationResult } from '@/types';
 
 interface ReportClientProps {
     result: EvaluationResult;

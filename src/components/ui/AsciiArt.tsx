@@ -1,6 +1,5 @@
 'use client';
 
-import { TypeShuffle } from './TypeShuffle';
 
 interface AsciiArtProps {
     className?: string;
