@@ -66,6 +66,20 @@ Ask questions about your code and get AI-powered suggestions:
 - Floating chat panel on report page
 - Context-aware responses using extracted code snippets
 - Streaming responses for real-time feedback
+- **🔍 Exa Web Search** (v2.2): Auto-searches GitHub, StackOverflow, MDN for relevant answers
+
+### 🎫 Selective Issue Creation (v2.2)
+Create GitHub issues for specific improvements:
+- Checkbox selection for each improvement
+- Inline interactive UI in chat area
+- "CREATE X ISSUES" with select all option
+- Issues created with proper labels and formatting
+
+### 🔥 Firecrawl Integration (v2.2)
+Fast, reliable hackathon page scraping:
+- JS-rendered page support for dynamic content
+- Better DevPost and custom hackathon page extraction
+- Graceful fallback to basic fetch
 
 ### 🔒 Security Scanning (v2.0)
 Automatic vulnerability detection:
@@ -78,6 +92,7 @@ Evaluate deployment readiness:
 - GitHub Actions, GitLab CI, Jenkins detection
 - Docker/docker-compose configuration
 - Deploy configs (Vercel, Netlify, Fly.io, Render)
+
 
 ### Multi-Agent AI Analysis
 ```

@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2025-12-14
+
+### Added
+
+#### 🔥 Firecrawl Integration
+- **Fast Web Scraping**: Uses Firecrawl for JS-rendered hackathon page scraping
+- **Reliable Extraction**: Better handling of dynamic DevPost and custom pages
+- **Graceful Fallback**: Falls back to basic fetch if Firecrawl not configured
+- **New File**: `src/lib/firecrawl.ts` with `scrapeWithFirecrawl()` utility
+
+#### 🔍 Exa AI Web Search
+- **Smart Search**: Auto-detects when chat questions need web search
+- **Developer-Focused**: Searches GitHub, StackOverflow, MDN, dev.to
+- **Source Citations**: AI responses include relevant source links
+- **New File**: `src/lib/exa.ts` with `searchExa()` utility
+
+#### 🎫 Selective Issue Creation
+- **Checkbox Selection**: Pick specific improvements to create as GitHub issues
+- **Inline in Chat**: Improvements appear as interactive message in chat area
+- **Create Button**: "CREATE X ISSUES" button only appears when items selected
+- **Select All**: Quick button to select all improvements
+
+### Changed
+
+#### 🎨 UI Improvements
+- **Improvements in Chat**: Moved from fixed panel to scrollable chat message
+- **SEND Button**: Always visible with bright green styling
+- **CI/CD Button**: Changed from blue to green for consistent terminal theme
+- **Better Layout**: Chat area now fully scrollable with input always visible
+
+#### 🧹 Cleanup
+- **Removed plugin-github**: Removed unused Kestra plugin-github submodule
+- **Demo Files Hidden**: Demo project and deployment guide in gitignore
+
+---
+
 ## [2.1.0] - 2025-12-13
+
 
 ### Added
 
@@ -247,13 +284,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.2.0 | 2025-12-14 | Firecrawl integration, Exa web search, selective issue creation, UI improvements |
 | 2.1.0 | 2025-12-13 | User-controlled GitHub Actions, Kestra GitHub Plugin, Flow Bug Fixes |
 | 2.0.0 | 2025-12-12 | Chat with Codebase, Security Scan, CI/CD Detection, Vision Assessment |
 | 0.3.0 | 2025-12-10 | Kestra Native AI Plugin, workflow resilience |
 | 0.2.0 | 2025-12-10 | Fixed Kestra workflow, CodeRabbit detection, award eligibility |
 | 0.1.0 | 2025-12-09 | Initial release with full evaluation pipeline |
 
-[Unreleased]: https://github.com/BishalJena/HackJudge/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/BishalJena/HackJudge/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/BishalJena/HackJudge/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/BishalJena/HackJudge/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/BishalJena/HackJudge/compare/v0.3.0...v2.0.0
 [0.3.0]: https://github.com/BishalJena/HackJudge/compare/v0.2.0...v0.3.0
