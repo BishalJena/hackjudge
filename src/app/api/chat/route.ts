@@ -15,14 +15,33 @@ interface ChatMessage {
 
 export async function POST(request: NextRequest) {
     try {
+        // Fail fast if API key is missing
+        if (!OPENROUTER_API_KEY) {
+            return new Response(JSON.stringify({ error: 'Server misconfigured: missing AI API key' }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
         const { projectId, messages, codeContext } = await request.json();
 
-        if (!messages || !Array.isArray(messages)) {
+        if (!Array.isArray(messages) || messages.length === 0) {
             return new Response(JSON.stringify({ error: 'Messages required' }), {
                 status: 400,
                 headers: { 'Content-Type': 'application/json' }
             });
         }
+
+        // Sanitize messages: only allow user/assistant roles, prevent system injection
+        const safeMessages: ChatMessage[] = messages
+            .filter((m: unknown): m is { role: string; content: string } =>
+                typeof m === 'object' && m !== null &&
+                (m as { role?: string }).role !== 'system' &&
+                ((m as { role?: string }).role === 'user' || (m as { role?: string }).role === 'assistant') &&
+                typeof (m as { content?: string }).content === 'string'
+            )
+            .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content.slice(0, 8000) }))
+            .slice(-10);
 
         // Try to get evaluation result for context
         let evaluationContext = '';
@@ -73,7 +92,7 @@ Capabilities:
 
         const chatMessages: ChatMessage[] = [
             { role: 'system', content: systemPrompt },
-            ...messages.slice(-10), // Last 10 messages for context
+            ...safeMessages,
         ];
 
         // Call OpenRouter with streaming (60s timeout)
