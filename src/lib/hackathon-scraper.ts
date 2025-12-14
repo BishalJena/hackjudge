@@ -1,9 +1,11 @@
 /**
  * Hackathon URL Scraper - Extracts judging criteria from any hackathon site
  * Supports: DevPost, custom hackathon websites via AI extraction
+ * Uses Firecrawl for fast, reliable JS-rendered scraping
  */
 
 import { getDefaultLLMClient } from './llm';
+import { scrapeWithFirecrawl, isFirecrawlConfigured, extractTextFromMarkdown } from './firecrawl';
 
 export interface HackathonInfo {
     name: string;
@@ -20,11 +22,12 @@ export interface HackathonInfo {
     }[];
     sponsors: string[];
     deadline?: string;
-    source: 'devpost' | 'ai' | 'unknown';
+    source: 'devpost' | 'firecrawl' | 'ai' | 'unknown';
 }
 
 /**
  * Scrape hackathon information from any URL
+ * Uses Firecrawl for fast scraping, falls back to basic fetch
  */
 export async function scrapeHackathonUrl(url: string): Promise<HackathonInfo | null> {
     if (!url) return null;
@@ -32,7 +35,22 @@ export async function scrapeHackathonUrl(url: string): Promise<HackathonInfo | n
     try {
         const parsed = new URL(url);
 
-        // Fetch the page
+        // Try Firecrawl first for best results
+        if (isFirecrawlConfigured()) {
+            console.log('🔥 Using Firecrawl for hackathon scraping');
+            const firecrawlResult = await scrapeWithFirecrawl(url, {
+                formats: ['markdown'],
+                waitFor: 2000, // Wait for JS to render
+            });
+
+            if (firecrawlResult.success && firecrawlResult.markdown) {
+                const text = extractTextFromMarkdown(firecrawlResult.markdown, 8000);
+                return await extractWithAI(text, url, 'firecrawl');
+            }
+            console.log('Firecrawl failed, falling back to basic fetch');
+        }
+
+        // Fallback to basic fetch
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'HackJudge AI (hackathon evaluation tool)',
@@ -53,7 +71,7 @@ export async function scrapeHackathonUrl(url: string): Promise<HackathonInfo | n
         }
 
         // For other sites, use AI extraction
-        return await extractWithAI(html, url);
+        return await extractWithAI(stripHtmlToText(html), url, 'ai');
     } catch (error) {
         console.error('Error scraping hackathon URL:', error);
         return null;
@@ -61,14 +79,11 @@ export async function scrapeHackathonUrl(url: string): Promise<HackathonInfo | n
 }
 
 /**
- * Use LLM to extract hackathon info from any page
+ * Use LLM to extract hackathon info from page content
  */
-async function extractWithAI(html: string, url: string): Promise<HackathonInfo | null> {
-    // Clean HTML - remove scripts, styles, keep text
-    const cleanedText = stripHtmlToText(html);
-
-    // Limit to first 6000 chars to stay within context
-    const excerpt = cleanedText.slice(0, 6000);
+async function extractWithAI(content: string, url: string, source: 'firecrawl' | 'ai'): Promise<HackathonInfo | null> {
+    // Limit to stay within context
+    const excerpt = content.slice(0, 6000);
 
     const prompt = `Extract hackathon information from this webpage. Return JSON only.
 
@@ -121,7 +136,7 @@ Return ONLY valid JSON, no other text.`;
             prizes: parsed.prizes || [],
             sponsors: parsed.sponsors || [],
             deadline: parsed.deadline,
-            source: 'ai',
+            source: source,
         };
     } catch (error) {
         console.error('LLM extraction failed:', error);
