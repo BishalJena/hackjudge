@@ -361,7 +361,7 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
                             <button
                                 onClick={handlePushWorkflow}
                                 disabled={pushingWorkflow || workflowPushed}
-                                className="w-full text-left text-xs px-3 py-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 disabled:opacity-50"
+                                className="w-full text-left text-xs px-3 py-2 border border-terminal-green/30 text-terminal-green hover:bg-terminal-green/10 disabled:opacity-50"
                             >
                                 {workflowPushed ? '[CI/CD_CREATED ✓]' : pushingWorkflow ? '[PUSHING...]' : '[SETUP_CI/CD]'}
                             </button>
