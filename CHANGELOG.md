@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+#### 🎨 Landing Page Layout
+- **Row-Based Layout**: Labels (SYSTEM, MISSION, TARGET, CONFIG, HACKATHON) now properly align with content using flex rows
+- **Animation Fix**: TypeShuffle runs only once per mount, preventing re-animation on state changes
+- **Jitter Prevention**: Added minHeight to animated sections to prevent layout shift
+- **Hackathon Panel**: Shows ALL judging criteria in a bordered panel (removed 3-item limit)
+
 ## [2.2.0] - 2025-12-14
 
 ### Added
