@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+SPONSOR_TOOLS.md
+NEW_IMPLEMENTATION.md
+FRONTEND.md
+kestra/flows/main_tutorial_*.yml

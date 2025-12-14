@@ -1,0 +1,242 @@
+# Kestra Flow: Setup CI/CD (On-Demand)
+# Triggered by user action from HackJudge Report page
+
+id: setup-cicd
+namespace: hackjudge
+
+description: |
+  Creates a GitHub Actions CI/CD workflow in the user's repository.
+  Triggered on-demand by user from the Report page.
+
+labels:
+  project: hackjudge
+  type: github-action
+  trigger: user-initiated
+
+inputs:
+  - id: owner
+    type: STRING
+    description: GitHub repository owner
+  - id: repo
+    type: STRING
+    description: GitHub repository name
+  - id: branch
+    type: STRING
+    default: "main"
+    description: Target branch
+
+tasks:
+  # Step 1: Create the CI workflow file content
+  - id: prepare_workflow
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - |
+        cat > ci_workflow.yml << 'EOF'
+        name: CI
+
+        on:
+          push:
+            branches: [main, master]
+          pull_request:
+            branches: [main, master]
+
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            
+            steps:
+              - uses: actions/checkout@v4
+              
+              - name: Setup Node.js
+                uses: actions/setup-node@v4
+                with:
+                  node-version: '20'
+                  cache: 'npm'
+              
+              - name: Install dependencies
+                run: npm ci
+              
+              - name: Build
+                run: npm run build --if-present
+              
+              - name: Test
+                run: npm test --if-present
+        EOF
+        
+        # Base64 encode for GitHub API
+        cat ci_workflow.yml | base64 > ci_workflow_b64.txt
+        echo "Workflow file prepared"
+    outputFiles:
+      - ci_workflow_b64.txt
+
+  # Step 2: Create a new branch for the PR
+  - id: create_branch
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      image: python:3.11-slim
+    beforeCommands:
+      - pip install requests --quiet
+    env:
+      GITHUB_TOKEN: "{{ secret('GITHUB_TOKEN') }}"
+      OWNER: "{{ inputs.owner }}"
+      REPO: "{{ inputs.repo }}"
+      BASE_BRANCH: "{{ inputs.branch }}"
+    script: |
+      import os
+      import json
+      import requests
+      
+      token = os.environ["GITHUB_TOKEN"]
+      owner = os.environ["OWNER"]
+      repo = os.environ["REPO"]
+      base_branch = os.environ["BASE_BRANCH"]
+      
+      headers = {
+          "Authorization": f"Bearer {token}",
+          "Accept": "application/vnd.github.v3+json",
+          "User-Agent": "HackJudge-Kestra"
+      }
+      
+      # Get the SHA of the base branch
+      ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{base_branch}"
+      ref_response = requests.get(ref_url, headers=headers)
+      
+      if ref_response.status_code != 200:
+          print(f"Error getting base branch: {ref_response.text}")
+          raise Exception("Failed to get base branch SHA")
+      
+      base_sha = ref_response.json()["object"]["sha"]
+      print(f"Base branch SHA: {base_sha}")
+      
+      # Create the new branch
+      new_branch = "hackjudge/add-cicd"
+      create_ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs"
+      create_ref_data = {
+          "ref": f"refs/heads/{new_branch}",
+          "sha": base_sha
+      }
+      
+      create_response = requests.post(create_ref_url, headers=headers, json=create_ref_data)
+      
+      if create_response.status_code == 201:
+          print(f"Created branch: {new_branch}")
+      elif create_response.status_code == 422:
+          print(f"Branch already exists, continuing...")
+      else:
+          print(f"Branch creation response: {create_response.status_code}")
+      
+      # Save the branch name for next step
+      with open("branch_name.txt", "w") as f:
+          f.write(new_branch)
+    outputFiles:
+      - branch_name.txt
+
+  # Step 3: Create the workflow file in the new branch
+  - id: create_workflow_file
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      image: python:3.11-slim
+    beforeCommands:
+      - pip install requests --quiet
+    inputFiles:
+      ci_workflow_b64.txt: "{{ outputs.prepare_workflow.outputFiles['ci_workflow_b64.txt'] }}"
+    env:
+      GITHUB_TOKEN: "{{ secret('GITHUB_TOKEN') }}"
+      OWNER: "{{ inputs.owner }}"
+      REPO: "{{ inputs.repo }}"
+    script: |
+      import os
+      import requests
+      
+      token = os.environ["GITHUB_TOKEN"]
+      owner = os.environ["OWNER"]
+      repo = os.environ["REPO"]
+      branch = "hackjudge/add-cicd"
+      
+      # Read the base64 encoded content
+      with open("ci_workflow_b64.txt") as f:
+          content_b64 = f.read().strip()
+      
+      headers = {
+          "Authorization": f"Bearer {token}",
+          "Accept": "application/vnd.github.v3+json",
+          "User-Agent": "HackJudge-Kestra"
+      }
+      
+      # Create the file
+      file_url = f"https://api.github.com/repos/{owner}/{repo}/contents/.github/workflows/ci.yml"
+      file_data = {
+          "message": "ci: add automated CI/CD workflow (via HackJudge AI + Kestra)",
+          "content": content_b64,
+          "branch": branch
+      }
+      
+      response = requests.put(file_url, headers=headers, json=file_data)
+      
+      if response.status_code in [200, 201]:
+          result = response.json()
+          print(f"✅ Workflow file created!")
+          print(f"Commit URL: {result['commit']['html_url']}")
+          with open("commit_url.txt", "w") as f:
+              f.write(result['commit']['html_url'])
+      else:
+          print(f"Error: {response.status_code}")
+          print(response.text)
+          raise Exception("Failed to create workflow file")
+    outputFiles:
+      - commit_url.txt
+
+  # Step 4: Create PR using Kestra GitHub Plugin
+  - id: create_pr
+    type: io.kestra.plugin.github.pulls.Create
+    description: Create PR to add CI/CD workflow
+    oauthToken: "{{ secret('GITHUB_TOKEN') }}"
+    repository: "{{ inputs.owner }}/{{ inputs.repo }}"
+    sourceBranch: hackjudge/add-cicd
+    targetBranch: "{{ inputs.branch }}"
+    title: "ci: add automated CI/CD pipeline (via HackJudge AI)"
+    body: |
+      ## 🔄 Automated CI/CD Setup
+      
+      This PR was generated by **HackJudge AI** using the **Kestra GitHub Plugin** because no CI/CD configuration was detected in your repository.
+      
+      ### What This Workflow Does
+      - ✅ Runs on every push and PR to main/master branch
+      - ✅ Installs dependencies with npm
+      - ✅ Builds the project
+      - ✅ Runs tests (if configured)
+      - ✅ Uses Node.js 20 with npm caching
+      
+      ### Getting Started
+      1. Review the workflow file
+      2. Merge this PR
+      3. Push a commit to trigger your first CI run!
+      
+      ---
+      
+      💡 **Pro Tip:** After merging, add more steps like linting, type checking, or deployment.
+      
+      ---
+      _Powered by [HackJudge AI](https://github.com/BishalJena/HackJudge) + [Kestra](https://kestra.io) 🤖_
+    draft: false
+
+outputs:
+  - id: pr_url
+    type: STRING
+    value: "{{ outputs.create_pr.htmlUrl }}"
+  - id: commit_url
+    type: STRING
+    value: "{{ read(outputs.create_workflow_file.outputFiles['commit_url.txt']) }}"
+
+triggers:
+  - id: api_trigger
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: setup-cicd
+
+errors:
+  - id: handle_failure
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - echo "Failed to setup CI/CD for {{ inputs.owner }}/{{ inputs.repo }}"
