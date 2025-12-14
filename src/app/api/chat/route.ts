@@ -4,6 +4,7 @@
  */
 import { NextRequest } from 'next/server';
 import { getEvaluationResult } from '@/lib/store';
+import { needsWebSearch, searchExa, formatSearchContext } from '@/lib/exa';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
 const MODEL = 'google/gemini-2.0-flash-001';
@@ -74,6 +75,18 @@ Project Analysis Summary:
                 .join('\n\n');
         }
 
+        // Get the latest user message for web search
+        const latestUserMessage = safeMessages.filter(m => m.role === 'user').pop()?.content || '';
+
+        // Perform web search if needed
+        let webSearchContext = '';
+        if (needsWebSearch(latestUserMessage)) {
+            const searchResults = await searchExa(latestUserMessage);
+            if (searchResults) {
+                webSearchContext = formatSearchContext(searchResults);
+            }
+        }
+
         // System prompt for code assistant - CONCISE and ACTIONABLE
         const systemPrompt = `You are HackJudge AI, a code assistant for hackathon projects. Be CONCISE and ACTIONABLE.
 
@@ -83,14 +96,17 @@ RULES:
 - Provide code snippets when useful
 - Reference specific file paths
 - End with 1 clear next action when appropriate
+- If web search results are provided, cite them with [Source](url) format
 
 ${evaluationContext}
 
 ${codeSnippets ? `## Code Context:\n${codeSnippets}` : ''}
 
+${webSearchContext ? `## Web Search Results (cite these!):\n${webSearchContext}` : ''}
+
 Capabilities:
 - Explain code sections
-- Suggest UI/UX improvements
+- Suggest UI/UX improvements with latest best practices
 - Debug issues
 - Recommend implementation approaches
 - Help with feature additions`;

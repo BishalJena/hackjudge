@@ -24,6 +24,7 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
     const [allIssuesCreated, setAllIssuesCreated] = useState(0);
     const [pushingWorkflow, setPushingWorkflow] = useState(false);
     const [workflowPushed, setWorkflowPushed] = useState(false);
+    const [selectedIssues, setSelectedIssues] = useState<Set<number>>(new Set());
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Parse repo owner/name from URL
@@ -218,26 +219,29 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
         }
     };
 
-    // Create all issues at once
-    const handleCreateAllIssues = async () => {
-        if (!owner || !repo || creatingAllIssues || allIssuesCreated > 0) return;
+    // Create selected issues only
+    const handleCreateSelectedIssues = async () => {
+        if (!owner || !repo || creatingAllIssues || selectedIssues.size === 0) return;
         if (!result.improvements || result.improvements.length === 0) return;
 
         setCreatingAllIssues(true);
         try {
+            const selectedImprovements = result.improvements.filter((_, idx) => selectedIssues.has(idx));
+
             const response = await fetch('/api/github/create-issues', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     owner,
                     repo,
-                    improvements: result.improvements,
+                    improvements: selectedImprovements,
                 }),
             });
 
             const data = await response.json();
             if (data.success) {
                 setAllIssuesCreated(data.created);
+                setSelectedIssues(new Set()); // Clear selection
                 setMessages(prev => [...prev, {
                     role: 'assistant',
                     content: `✅ Created ${data.created} issues!\n\n${data.issues?.map((i: { title: string; url: string }) => `- [${i.title}](${i.url})`).join('\n')}`
@@ -248,6 +252,25 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
         } finally {
             setCreatingAllIssues(false);
         }
+    };
+
+    // Toggle issue selection
+    const toggleIssueSelection = (idx: number) => {
+        setSelectedIssues(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(idx)) {
+                newSet.delete(idx);
+            } else {
+                newSet.add(idx);
+            }
+            return newSet;
+        });
+    };
+
+    // Select all issues
+    const selectAllIssues = () => {
+        if (!result.improvements) return;
+        setSelectedIssues(new Set(result.improvements.map((_, idx) => idx)));
     };
 
     const getStatusColor = (status: string) => {
@@ -344,19 +367,56 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
                             </button>
                         )}
 
-                        {/* Batch Issue Creation */}
+                        {/* Selective Issue Creation */}
                         {owner && repo && result.improvements && result.improvements.length > 0 && (
-                            <button
-                                onClick={handleCreateAllIssues}
-                                disabled={creatingAllIssues || allIssuesCreated > 0}
-                                className="w-full text-left text-xs px-3 py-2 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 disabled:opacity-50"
-                            >
-                                {allIssuesCreated > 0
-                                    ? `[${allIssuesCreated}_ISSUES_CREATED ✓]`
-                                    : creatingAllIssues
-                                        ? '[CREATING_ISSUES...]'
-                                        : `[CREATE_ALL_ISSUES (${result.improvements.length})]`}
-                            </button>
+                            <div className="border-t border-terminal-green/10 pt-2 mt-2">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-terminal-dim">IMPROVEMENTS</span>
+                                    <button
+                                        type="button"
+                                        onClick={selectAllIssues}
+                                        className="text-xs text-terminal-green hover:underline"
+                                    >
+                                        Select All
+                                    </button>
+                                </div>
+                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                    {result.improvements.slice(0, 5).map((improvement, idx) => (
+                                        <label
+                                            key={idx}
+                                            className={`flex items-start gap-2 text-xs p-1.5 cursor-pointer hover:bg-terminal-green/5 ${selectedIssues.has(idx) ? 'bg-terminal-green/10 border-l-2 border-terminal-green' : ''
+                                                }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIssues.has(idx)}
+                                                onChange={() => toggleIssueSelection(idx)}
+                                                className="mt-0.5 accent-terminal-green"
+                                            />
+                                            <span className="flex-1 truncate" title={improvement.title}>
+                                                {improvement.title}
+                                            </span>
+                                            <span className="text-green-400 text-xs shrink-0">
+                                                +{improvement.impact}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {selectedIssues.size > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateSelectedIssues}
+                                        disabled={creatingAllIssues || allIssuesCreated > 0}
+                                        className="w-full text-xs px-3 py-2 mt-2 bg-yellow-500/20 border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/30 disabled:opacity-50"
+                                    >
+                                        {allIssuesCreated > 0
+                                            ? `[${allIssuesCreated}_ISSUES_CREATED ✓]`
+                                            : creatingAllIssues
+                                                ? '[CREATING...]'
+                                                : `[CREATE_ISSUES (${selectedIssues.size})]`}
+                                    </button>
+                                )}
+                            </div>
                         )}
 
                         <button

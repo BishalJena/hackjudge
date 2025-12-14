@@ -44,3 +44,5 @@ SPONSOR_TOOLS.md
 NEW_IMPLEMENTATION.md
 FRONTEND.md
 kestra/flows/main_tutorial_*.yml
+kestra/plugin-github
+node_modules
