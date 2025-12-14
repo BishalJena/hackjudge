@@ -436,8 +436,8 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
                                             <label
                                                 key={idx}
                                                 className={`flex items-center gap-2 p-1.5 cursor-pointer rounded text-sm transition-colors ${selectedIssues.has(idx)
-                                                        ? 'bg-terminal-green/10 text-terminal-green'
-                                                        : 'hover:bg-white/5'
+                                                    ? 'bg-terminal-green/10 text-terminal-green'
+                                                    : 'hover:bg-white/5'
                                                     }`}
                                             >
                                                 <input
@@ -490,9 +490,10 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
                                 className="flex-1 bg-black/30 border border-terminal-green/30 px-4 py-2 text-sm text-terminal-green placeholder:text-terminal-dim focus:outline-none focus:border-terminal-green"
                             />
                             <button
+                                type="button"
                                 onClick={handleSendMessage}
                                 disabled={isLoading || !input.trim()}
-                                className="px-4 py-2 bg-terminal-green text-black text-xs font-bold hover:bg-white transition-colors disabled:opacity-50"
+                                className="px-4 py-2 bg-green-500 text-black text-xs font-bold uppercase tracking-wider hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 SEND
                             </button>
