@@ -50,7 +50,7 @@ outputs:
     type: STRING
     value: "{{ outputs.create_issue.htmlUrl }}"
   - id: issue_number
-    type: INTEGER
+    type: INT
     value: "{{ outputs.create_issue.number }}"
 
 triggers:

@@ -22,7 +22,7 @@ inputs:
     description: GitHub repository name
   - id: branch
     type: STRING
-    default: "main"
+    defaults: "main"
     description: Target branch
 
 tasks:
