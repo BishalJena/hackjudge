@@ -20,6 +20,13 @@ interface ChatPanelProps {
     };
 }
 
+const suggestedQuestions = [
+    'How can I improve my landing page?',
+    'What are the main issues in my code?',
+    'Suggest a better navigation structure',
+    'How to add dark mode?',
+];
+
 export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -133,13 +140,6 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
             sendMessage();
         }
     };
-
-    const suggestedQuestions = [
-        'How can I improve my landing page?',
-        'What are the main issues in my code?',
-        'Suggest a better navigation structure',
-        'How to add dark mode?',
-    ];
 
     return (
         <>
