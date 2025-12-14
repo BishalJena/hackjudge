@@ -51,13 +51,11 @@ export function LandingPageClient() {
             clearTimeout(hackathonFetchTimeout.current);
         }
 
-        // Check if it's a valid URL (any hackathon site supported)
         if (!hackathonUrl.trim()) {
             setHackathonInfo(null);
             return;
         }
 
-        // Validate URL format
         try {
             new URL(hackathonUrl.trim());
         } catch {
@@ -111,7 +109,6 @@ export function LandingPageClient() {
             if (data.success && data.repos) {
                 setRepos(data.repos);
             }
-            // Don't retry on failure - hasFetchedRepos prevents re-fetch
         } catch (err) {
             console.error('Failed to fetch repos:', err);
         } finally {
@@ -140,7 +137,6 @@ export function LandingPageClient() {
 
         setIsLoading(true);
 
-        // Build query params for evaluation
         const params = new URLSearchParams({
             repo: urlToUse,
             branch: selectedRepo?.defaultBranch || 'main',
@@ -155,6 +151,19 @@ export function LandingPageClient() {
         router.push(`/evaluation?${params.toString()}`);
     };
 
+    // Row component for consistent layout
+    const Row = ({ label, children, minHeight }: { label: string; children: React.ReactNode; minHeight?: string }) => (
+        <div className="flex" style={{ minHeight }}>
+            <div className="hidden lg:block w-28 shrink-0 text-right pr-6 text-terminal-dim text-sm pt-1">
+                {label}
+            </div>
+            <div className="flex-1">
+                <div className="text-terminal-dim lg:hidden text-sm mb-2">{label}:</div>
+                {children}
+            </div>
+        </div>
+    );
+
     return (
         <main className="min-h-screen bg-terminal-black text-terminal-green font-mono p-4 md:p-8 selection:bg-terminal-green selection:text-black">
             {/* Top Nav Bar */}
@@ -167,47 +176,36 @@ export function LandingPageClient() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto">
-                {/* Column 1: Labels (2 cols) */}
-                <div className="hidden lg:block lg:col-span-2 text-right space-y-8 text-terminal-dim text-sm">
-                    <div className="h-12 pt-2">SYSTEM</div>
-                    <div className="h-auto pt-2">MISSION</div>
-                    <div className="h-auto pt-2">TARGET</div>
-                    <div className="h-auto pt-2">CONFIG</div>
-                    <div className="h-auto pt-2">ACTION</div>
-                </div>
+            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Left side: Main content (8 cols) */}
+                <div className="lg:col-span-8 space-y-5">
 
-                {/* Column 2: Content (6 cols) */}
-                <div className="lg:col-span-6 space-y-8">
                     {/* SYSTEM */}
-                    <div className="h-12">
-                        <h1 className="text-4xl font-bold tracking-tighter">
+                    <Row label="SYSTEM" minHeight="48px">
+                        <h1 className="text-4xl font-bold tracking-tighter overflow-hidden">
                             <TypeShuffle text="HACKJUDGE_AI" delay={0} speed={40} />
                             <span className="animate-cursor-blink ml-1">_</span>
                         </h1>
-                    </div>
+                    </Row>
 
                     {/* MISSION */}
-                    <div className="text-sm leading-relaxed max-w-md">
-                        <p className="mb-2">
-                            <span className="text-terminal-dim lg:hidden mr-2">MISSION:</span>
+                    <Row label="MISSION" minHeight="60px">
+                        <p className="text-sm leading-relaxed max-w-md overflow-hidden">
                             <TypeShuffle
                                 text="Autonomous hackathon project evaluation system. Analyzes code quality, security, and innovation metrics."
                                 delay={500}
                                 speed={20}
                             />
                         </p>
-                    </div>
+                    </Row>
 
                     {/* TARGET */}
-                    <div className="space-y-4">
-                        <div className="text-terminal-dim lg:hidden text-sm mb-2">TARGET:</div>
-
+                    <Row label="TARGET">
                         {authLoading ? (
                             <div className="text-sm animate-pulse">Initializing auth module...</div>
                         ) : isAuthenticated && user ? (
-                            <div className="space-y-4">
-                                <div className="flex gap-4 text-xs mb-2">
+                            <div className="space-y-3">
+                                <div className="flex gap-4 text-xs">
                                     <button
                                         onClick={() => setInputMode('list')}
                                         className={`hover:text-white ${inputMode === 'list' ? 'text-terminal-green underline decoration-2 underline-offset-4' : 'text-terminal-dim'}`}
@@ -223,7 +221,7 @@ export function LandingPageClient() {
                                 </div>
 
                                 {inputMode === 'list' ? (
-                                    <div className="border border-terminal-green/30 p-2 max-h-60 overflow-y-auto scrollbar-hide">
+                                    <div className="border border-terminal-green/30 p-2 max-h-48 overflow-y-auto scrollbar-hide">
                                         {loadingRepos ? (
                                             <div className="text-sm text-terminal-dim">Fetching repositories...</div>
                                         ) : (
@@ -268,99 +266,116 @@ export function LandingPageClient() {
                                 <GitHubSignInButton variant="terminal" className="text-sm font-bold" />
                             </div>
                         )}
-                    </div>
+                    </Row>
 
                     {/* CONFIG */}
-                    <div className="space-y-2">
-                        <div className="text-terminal-dim lg:hidden text-sm mb-2">CONFIG:</div>
-                        <button
-                            onClick={() => setRunSecurityScan(!runSecurityScan)}
-                            className="flex items-center gap-3 text-sm hover:text-white group"
-                        >
-                            <span className={runSecurityScan ? 'text-terminal-green' : 'text-terminal-dim'}>
-                                {runSecurityScan ? '[x]' : '[ ]'}
-                            </span>
-                            <span className="group-hover:underline decoration-terminal-green/30 underline-offset-4">
-                                ENABLE_SECURITY_AUDIT
-                            </span>
-                        </button>
-                        <button
-                            onClick={() => setRunCICDCheck(!runCICDCheck)}
-                            className="flex items-center gap-3 text-sm hover:text-white group"
-                        >
-                            <span className={runCICDCheck ? 'text-terminal-green' : 'text-terminal-dim'}>
-                                {runCICDCheck ? '[x]' : '[ ]'}
-                            </span>
-                            <span className="group-hover:underline decoration-terminal-green/30 underline-offset-4">
-                                ENABLE_CICD_VERIFICATION
-                            </span>
-                        </button>
+                    <Row label="CONFIG">
+                        <div className="space-y-1">
+                            <button
+                                onClick={() => setRunSecurityScan(!runSecurityScan)}
+                                className="flex items-center gap-3 text-sm hover:text-white group"
+                            >
+                                <span className={runSecurityScan ? 'text-terminal-green' : 'text-terminal-dim'}>
+                                    {runSecurityScan ? '[x]' : '[ ]'}
+                                </span>
+                                <span className="group-hover:underline decoration-terminal-green/30 underline-offset-4">
+                                    ENABLE_SECURITY_AUDIT
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => setRunCICDCheck(!runCICDCheck)}
+                                className="flex items-center gap-3 text-sm hover:text-white group"
+                            >
+                                <span className={runCICDCheck ? 'text-terminal-green' : 'text-terminal-dim'}>
+                                    {runCICDCheck ? '[x]' : '[ ]'}
+                                </span>
+                                <span className="group-hover:underline decoration-terminal-green/30 underline-offset-4">
+                                    ENABLE_CICD_VERIFICATION
+                                </span>
+                            </button>
+                        </div>
+                    </Row>
 
-                        <div className="flex items-center gap-2 mt-4 text-sm">
-                            <span className="text-terminal-dim">HACKATHON_URL:</span>
-                            <input
-                                type="text"
-                                aria-label="Hackathon page URL"
-                                value={hackathonUrl}
-                                onChange={(e) => setHackathonUrl(e.target.value)}
-                                className="bg-transparent border-b border-terminal-dim focus:border-terminal-green outline-none w-full max-w-xs placeholder-terminal-dim/30"
-                                placeholder="https://hackathon.devpost.com"
-                            />
-                            {hackathonInfo?.loading && (
-                                <span className="text-terminal-dim animate-pulse">...</span>
+                    {/* HACKATHON */}
+                    <Row label="HACKATHON">
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                                <span className="text-terminal-green">&gt;</span>
+                                <input
+                                    type="text"
+                                    aria-label="Hackathon page URL"
+                                    value={hackathonUrl}
+                                    onChange={(e) => setHackathonUrl(e.target.value)}
+                                    className="bg-transparent border-b border-terminal-dim focus:border-terminal-green outline-none flex-1 max-w-md placeholder-terminal-dim/30"
+                                    placeholder="https://hackathon.devpost.com"
+                                />
+                                {hackathonInfo?.loading && (
+                                    <div className="flex items-center gap-2 text-terminal-green">
+                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        <span className="text-xs">PARSING</span>
+                                    </div>
+                                )}
+                            </div>
+                            {hackathonInfo && !hackathonInfo.loading && hackathonInfo.criteria.length > 0 && (
+                                <div className="mt-3 border border-terminal-green/30 p-3">
+                                    <div className="text-xs text-terminal-dim mb-2 flex items-center gap-2">
+                                        <span className="text-terminal-green">■</span>
+                                        JUDGING_CRITERIA [{hackathonInfo.criteria.length}]
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                        {hackathonInfo.criteria.map((c, i) => (
+                                            <div key={i} className="flex items-center gap-2">
+                                                <span className="text-terminal-green font-bold w-10 text-right">
+                                                    {c.weight ? `${c.weight}%` : '—'}
+                                                </span>
+                                                <span className="text-terminal-green/70">{c.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                         </div>
+                    </Row>
 
-                        {/* Hackathon Info Display */}
-                        {hackathonInfo && !hackathonInfo.loading && hackathonInfo.criteria.length > 0 && (
-                            <div className="mt-3 p-3 border border-terminal-green/30 text-xs">
-                                <div className="text-terminal-dim mb-2">JUDGING_CRITERIA:</div>
-                                <div className="space-y-1">
-                                    {hackathonInfo.criteria.slice(0, 5).map((c, i) => (
-                                        <div key={i} className="flex items-center gap-2">
-                                            <span className="text-terminal-green">{c.weight ? `${c.weight}%` : '•'}</span>
-                                            <span>{c.name}</span>
-                                        </div>
-                                    ))}
+                    {/* Execute Button (no label) */}
+                    <div className="flex">
+                        <div className="hidden lg:block w-28 shrink-0" />
+                        <div className="flex-1 pt-2">
+                            {error && (
+                                <div className="text-red-500 text-sm mb-3 animate-pulse">
+                                    ERROR: {error}
                                 </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* ACTION */}
-                    <div className="pt-4">
-                        <div className="text-terminal-dim lg:hidden text-sm mb-2">ACTION:</div>
-                        {error && (
-                            <div className="text-red-500 text-sm mb-4 animate-pulse">
-                                ERROR: {error}
-                            </div>
-                        )}
-                        <button
-                            onClick={handleSubmit}
-                            disabled={isLoading || (!selectedRepo && !repoUrl)}
-                            className={`
-                                group relative px-6 py-3 text-sm font-bold tracking-widest uppercase transition-all
-                                border font-mono
-                                ${isLoading || (!selectedRepo && !repoUrl)
-                                    ? 'border-terminal-green/50 text-terminal-dim cursor-not-allowed'
-                                    : 'border-terminal-green text-terminal-green hover:bg-terminal-green/15 hover:shadow-[0_0_20px_rgba(0,255,65,0.4)] hover:text-white active:bg-terminal-green active:text-black'
-                                }
-                            `}
-                        >
-                            {isLoading ? (
-                                <span className="animate-pulse">INITIALIZING...</span>
-                            ) : (
-                                <span className="flex items-center gap-2">
-                                    <span>&gt; EXECUTE_EVALUATION</span>
-                                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">_</span>
-                                </span>
                             )}
-                        </button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={isLoading || (!selectedRepo && !repoUrl)}
+                                className={`
+                                    group relative px-6 py-3 text-sm font-bold tracking-widest uppercase transition-all
+                                    border font-mono
+                                    ${isLoading || (!selectedRepo && !repoUrl)
+                                        ? 'border-terminal-green/50 text-terminal-dim cursor-not-allowed'
+                                        : 'border-terminal-green text-terminal-green hover:bg-terminal-green/15 hover:shadow-[0_0_20px_rgba(0,255,65,0.4)] hover:text-white active:bg-terminal-green active:text-black'
+                                    }
+                                `}
+                            >
+                                {isLoading ? (
+                                    <span className="animate-pulse">INITIALIZING...</span>
+                                ) : (
+                                    <span className="flex items-center gap-2">
+                                        <span>&gt; EXECUTE_EVALUATION</span>
+                                        <span className="opacity-0 group-hover:opacity-100 transition-opacity">_</span>
+                                    </span>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Column 3: ASCII Art (4 cols) */}
-                <div className="hidden lg:flex lg:col-span-4 flex-col justify-start items-center pt-12 opacity-50 hover:opacity-100 transition-opacity duration-500">
+                {/* Right side: ASCII Art (4 cols) */}
+                <div className="hidden lg:flex lg:col-span-4 flex-col justify-start items-center pt-8 opacity-50 hover:opacity-100 transition-opacity duration-500">
                     <div className="border border-terminal-green/20 p-4 relative">
                         <div className="absolute -top-3 left-4 bg-terminal-black px-2 text-xs text-terminal-dim">
                             VISUAL_FEED
@@ -371,8 +386,7 @@ export function LandingPageClient() {
                         </div>
                     </div>
 
-                    {/* Stats / Fixed Data (was random, caused hydration mismatch) */}
-                    <div className="mt-12 w-full space-y-2 font-mono text-[10px] text-terminal-dim">
+                    <div className="mt-8 w-full space-y-2 font-mono text-[10px] text-terminal-dim">
                         <div className="flex justify-between">
                             <span>CPU_LOAD</span>
                             <span>28%</span>
