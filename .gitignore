@@ -46,3 +46,8 @@ FRONTEND.md
 kestra/flows/main_tutorial_*.yml
 kestra/plugin-github
 node_modules
+
+# Demo files (internal only, not for judges)
+/demo-project/
+/DEPLOYMENT.md
+/src/lib/demo-data.ts
