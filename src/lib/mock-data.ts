@@ -9,6 +9,7 @@ import type { EvaluationResult, AgentOutput, Improvement, AwardEligibility } fro
 export function getMockEvaluationResult(projectId: string): EvaluationResult {
     return {
         projectId,
+        repoUrl: 'https://github.com/BishalJena/hackjudge',
         readinessScore: 82,
         status: 'STRONG',
         summary:
