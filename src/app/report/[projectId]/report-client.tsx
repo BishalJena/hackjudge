@@ -417,58 +417,61 @@ export function ReportClient({ result, projectId }: ReportClientProps) {
                             </div>
                         )}
 
+                        {/* Interactive Improvements - In Chat */}
+                        {owner && repo && result.improvements && result.improvements.length > 0 && (
+                            <div className="mr-8">
+                                <div className="p-3 text-sm bg-black/30 border-l-2 border-yellow-500/50">
+                                    <div className="text-xs text-terminal-dim mb-2 uppercase flex justify-between items-center">
+                                        <span>🎫 CREATE GITHUB ISSUES</span>
+                                        <button
+                                            type="button"
+                                            onClick={selectAllIssues}
+                                            className="text-terminal-green hover:underline"
+                                        >
+                                            Select All
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1">
+                                        {result.improvements.map((improvement, idx) => (
+                                            <label
+                                                key={idx}
+                                                className={`flex items-center gap-2 p-1.5 cursor-pointer rounded text-sm transition-colors ${selectedIssues.has(idx)
+                                                        ? 'bg-terminal-green/10 text-terminal-green'
+                                                        : 'hover:bg-white/5'
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIssues.has(idx)}
+                                                    onChange={() => toggleIssueSelection(idx)}
+                                                    className="accent-terminal-green"
+                                                />
+                                                <span className="flex-1">{improvement.title}</span>
+                                                <span className="text-green-400 text-xs">+{improvement.impact}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {selectedIssues.size > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleCreateSelectedIssues}
+                                            disabled={creatingAllIssues || allIssuesCreated > 0}
+                                            className="w-full text-xs px-3 py-2 mt-2 bg-yellow-500/20 border border-yellow-500 text-yellow-400 hover:bg-yellow-500/30 disabled:opacity-50"
+                                        >
+                                            {allIssuesCreated > 0
+                                                ? `✅ ${allIssuesCreated} ISSUES CREATED`
+                                                : creatingAllIssues
+                                                    ? 'CREATING...'
+                                                    : `CREATE ${selectedIssues.size} ISSUE${selectedIssues.size > 1 ? 'S' : ''}`}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Improvements Section - Interactive */}
-                    {owner && repo && result.improvements && result.improvements.length > 0 && (
-                        <div className="border-t border-terminal-green/20 p-3 bg-black/40">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs text-terminal-dim uppercase">📋 Select Improvements to Create as Issues</span>
-                                <button
-                                    type="button"
-                                    onClick={selectAllIssues}
-                                    className="text-xs text-terminal-green hover:underline"
-                                >
-                                    Select All
-                                </button>
-                            </div>
-                            <div className="grid gap-2 max-h-40 overflow-y-auto">
-                                {result.improvements.map((improvement, idx) => (
-                                    <label
-                                        key={idx}
-                                        className={`flex items-center gap-3 text-sm p-2 cursor-pointer rounded transition-colors ${selectedIssues.has(idx)
-                                                ? 'bg-terminal-green/15 border border-terminal-green/50'
-                                                : 'hover:bg-terminal-green/5 border border-transparent'
-                                            }`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIssues.has(idx)}
-                                            onChange={() => toggleIssueSelection(idx)}
-                                            className="w-4 h-4 accent-terminal-green"
-                                        />
-                                        <span className="flex-1">{improvement.title}</span>
-                                        <span className="text-green-400 text-xs font-bold">+{improvement.impact} pts</span>
-                                    </label>
-                                ))}
-                            </div>
-                            {selectedIssues.size > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={handleCreateSelectedIssues}
-                                    disabled={creatingAllIssues || allIssuesCreated > 0}
-                                    className="w-full text-sm px-4 py-2 mt-3 bg-yellow-500/20 border border-yellow-500 text-yellow-400 font-bold hover:bg-yellow-500/30 disabled:opacity-50 transition-colors"
-                                >
-                                    {allIssuesCreated > 0
-                                        ? `✅ ${allIssuesCreated} ISSUES CREATED`
-                                        : creatingAllIssues
-                                            ? '⏳ CREATING ISSUES...'
-                                            : `🎫 CREATE ${selectedIssues.size} ISSUE${selectedIssues.size > 1 ? 'S' : ''}`}
-                                </button>
-                            )}
-                        </div>
-                    )}
 
                     {/* Input - Fixed at bottom of panel */}
                     <div className="p-4 border-t border-terminal-green/10">
