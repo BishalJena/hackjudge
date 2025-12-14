@@ -68,7 +68,7 @@ Project Analysis Summary:
                     typeof (f as { content?: unknown }).content === 'string'
                 )
                 .slice(0, 10) // Limit to 10 files
-                .map((f) =>
+                .map((f: { path: string; content: string }) =>
                     `### ${f.path}\n\`\`\`\n${f.content.slice(0, 2000)}\n\`\`\``
                 )
                 .join('\n\n');
