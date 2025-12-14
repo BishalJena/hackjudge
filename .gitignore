@@ -1,6 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -10,44 +10,53 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# Testing
 /coverage
 
-# next.js
+# Next.js
 /.next/
 /out/
 
-# production
+# Production build
 /build
 
-# misc
+# Misc
 .DS_Store
 *.pem
 
-# debug
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# Environment variables (keep .env.example for documentation)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# NOTE: .env.example is intentionally NOT ignored
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-SPONSOR_TOOLS.md
-NEW_IMPLEMENTATION.md
-FRONTEND.md
+# Kestra local development files
 kestra/flows/main_tutorial_*.yml
 kestra/plugin-github
-node_modules
+SPONSOR_TOOLS.md
+DEPLOYMENT.md
 
-# Demo files (internal only, not for judges)
+# Internal development docs (not part of submission)
+NEW_IMPLEMENTATION.md
+FRONTEND.md
+
+# Demo files (internal prep only, not for judges)
 /demo-project/
-/DEPLOYMENT.md
 /src/lib/demo-data.ts
+/DEPLOYMENT.md
+/SPONSOR_TOOLS.md
