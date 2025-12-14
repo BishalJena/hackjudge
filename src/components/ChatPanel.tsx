@@ -5,7 +5,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -234,13 +233,14 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
                                 className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-3 py-2 text-sm focus:outline-none focus:border-green-500"
                                 disabled={isLoading}
                             />
-                            <Button
+                            <button
+                                type="button"
                                 onClick={sendMessage}
                                 disabled={!input.trim() || isLoading}
-                                size="sm"
+                                className="px-4 py-2 bg-green-500 text-black text-xs font-bold uppercase tracking-wider hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded"
                             >
                                 Send
-                            </Button>
+                            </button>
                         </div>
                     </div>
                 </div>
