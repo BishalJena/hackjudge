@@ -26,6 +26,7 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,6 +35,24 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Focus input when panel opens
+    useEffect(() => {
+        if (isOpen && inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [isOpen]);
+
+    // ESC key to close dialog
+    useEffect(() => {
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, [isOpen]);
 
     const sendMessage = async () => {
         if (!input.trim() || isLoading) return;
@@ -206,6 +225,7 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
                     <div className="p-3 border-t border-[var(--color-border)]">
                         <div className="flex gap-2">
                             <input
+                                ref={inputRef}
                                 type="text"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
