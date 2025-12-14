@@ -16,7 +16,7 @@ interface ChatPanelProps {
     projectId: string;
     codeContext?: {
         files: Array<{ path: string; content: string; size: number }>;
-        totalSnippets: number;
+        totalSnippets?: number;
     };
 }
 
@@ -136,7 +136,12 @@ export function ChatPanel({ projectId, codeContext }: ChatPanelProps) {
 
             {/* Chat Panel */}
             {isOpen && (
-                <div className="fixed bottom-24 right-6 w-96 h-[500px] bg-[var(--color-bg)] border-2 border-[var(--color-border)] rounded-lg shadow-2xl z-50 flex flex-col">
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Chat with Codebase"
+                    className="fixed bottom-24 right-6 w-96 h-[500px] bg-[var(--color-bg)] border-2 border-[var(--color-border)] rounded-lg shadow-2xl z-50 flex flex-col"
+                >
                     {/* Header */}
                     <div className="p-3 border-b border-[var(--color-border)] flex items-center justify-between">
                         <div>
