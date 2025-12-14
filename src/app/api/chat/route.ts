@@ -62,8 +62,13 @@ Project Analysis Summary:
         let codeSnippets = '';
         if (codeContext?.files && Array.isArray(codeContext.files)) {
             codeSnippets = codeContext.files
+                .filter((f: unknown): f is { path: string; content: string } =>
+                    typeof f === 'object' && f !== null &&
+                    typeof (f as { path?: unknown }).path === 'string' &&
+                    typeof (f as { content?: unknown }).content === 'string'
+                )
                 .slice(0, 10) // Limit to 10 files
-                .map((f: { path: string; content: string }) =>
+                .map((f) =>
                     `### ${f.path}\n\`\`\`\n${f.content.slice(0, 2000)}\n\`\`\``
                 )
                 .join('\n\n');
@@ -101,7 +106,7 @@ Capabilities:
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+                ...(process.env.NEXT_PUBLIC_APP_URL ? { 'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL } : {}),
                 'X-Title': 'HackJudge AI',
             },
             body: JSON.stringify({
